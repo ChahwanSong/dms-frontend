@@ -5,7 +5,8 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
+from asgi_lifespan import LifespanManager
 
 from app.core.config import get_settings
 from app.main import create_app
@@ -38,8 +39,10 @@ async def test_app(monkeypatch) -> AsyncIterator[AsyncClient]:
 
     app = create_app()
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
+    async with LifespanManager(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
 
 
 async def wait_for_condition(condition, timeout: float = 1.0) -> None:
