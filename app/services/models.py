@@ -4,7 +4,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class TaskStatus(str, enum.Enum):
@@ -26,8 +26,9 @@ class TaskRecord(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     logs: List[str] = Field(default_factory=list)
 
-    class Config:
-        json_encoders = {datetime: lambda dt: dt.isoformat()}
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class TaskCreateResult(BaseModel):
