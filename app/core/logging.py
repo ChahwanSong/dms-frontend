@@ -4,12 +4,12 @@ import logging
 import sys
 from typing import Any, Dict
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 from .config import Settings
 
 
-class KubernetesJSONFormatter(jsonlogger.JsonFormatter):
+class KubernetesJSONFormatter(JsonFormatter):
     """JSON log formatter with Kubernetes friendly defaults."""
 
     def add_fields(self, log_record: Dict[str, Any], record: logging.LogRecord, message_dict: Dict[str, Any]) -> None:  # noqa: D401 - documented in base
