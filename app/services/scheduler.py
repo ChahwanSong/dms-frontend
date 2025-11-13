@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict
+
+import httpx
+
+from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
+
+
+class SchedulerClient:
+    """Client responsible for communicating with the scheduler microservice."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._client = httpx.AsyncClient(timeout=settings.request_timeout_seconds)
+
+    async def submit_task(self, payload: Dict[str, Any]) -> None:
+        url = self._settings.scheduler_url(self._settings.scheduler_task_endpoint)
+        logger.debug("Submitting task to scheduler", extra={"url": url, "payload": payload})
+        response = await self._client.post(url, json=payload)
+        response.raise_for_status()
+
+    async def cancel_task(self, payload: Dict[str, Any]) -> None:
+        url = self._settings.scheduler_url(self._settings.scheduler_cancel_endpoint)
+        logger.debug("Cancelling task via scheduler", extra={"url": url, "payload": payload})
+        response = await self._client.post(url, json=payload)
+        response.raise_for_status()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
