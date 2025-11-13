@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dms-frontend"
 version = "0.1.0"
-description = "Distributed Management Service frontend API"
+description = "Data Moving Service frontend API"
 authors = [{name = "DMS Team"}]
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,9 @@ dev = [
 
 [project.scripts]
 dms-frontend = "cli.main:main"
+
+[tool.setuptools]
+packages = ["cli", "app"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

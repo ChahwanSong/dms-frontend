@@ -1,6 +1,6 @@
 # DMS Frontend
 
-A Kubernetes-ready FastAPI microservice that fronts the Distributed Management Service (DMS). The frontend accepts user task
+A Kubernetes-ready FastAPI microservice that fronts the Data Moving Service (DMS). The frontend accepts user task
 requests, persists metadata in Redis, forwards work to the `dms_scheduler`, and exposes rich lifecycle management APIs for end
 users and operators.
 

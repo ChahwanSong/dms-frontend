@@ -10,7 +10,7 @@ router = APIRouter(tags=["meta"])
 @router.get("/help", response_model=HelpResponse)
 async def help_endpoint() -> HelpResponse:
     return HelpResponse(
-        description="Distributed Management Service frontend API",
+        description="Data Moving Service frontend API",
         endpoints=[
             "GET /api/v1/services/{service}/users/{user_id}/tasks",
             "POST /api/v1/services/{service}/users/{user_id}/tasks",
