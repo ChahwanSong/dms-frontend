@@ -11,4 +11,4 @@ if [[ -z "${VIRTUAL_ENV:-}" && -f "${SCRIPT_DIR}/.venv/bin/activate" ]]; then
 fi
 
 echo "Starting local scheduler stub on ${DMS_SCHEDULER_URL}" >&2
-exec python -m uvicorn "cli.local_scheduler:app" --host 127.0.0.1 --port 9000
+exec python3 -m uvicorn "cli.local_scheduler:app" --host 127.0.0.1 --port 9000
