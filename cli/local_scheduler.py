@@ -1,7 +1,10 @@
 """Local stub scheduler for development and manual testing."""
+
 from __future__ import annotations
 
 import logging
+from pythonjsonlogger import json
+
 import signal
 from contextlib import asynccontextmanager
 from typing import Any, Dict
@@ -9,7 +12,15 @@ from typing import Any, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
+
+handler = logging.StreamHandler()
+formatter = json.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+handler.setFormatter(formatter)
+
 logger = logging.getLogger("dms-frontend.local-scheduler")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.propagate = False
 
 
 class _State:
@@ -21,7 +32,7 @@ state = _State()
 
 
 @asynccontextmanager
-def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI):
     logger.info("Starting local scheduler stub")
     try:
         yield
@@ -35,7 +46,12 @@ def create_app() -> FastAPI:
 
     @app.post("/task")
     async def submit_task(payload: Dict[str, Any]) -> JSONResponse:
-        task_id = str(payload.get("task_id") or payload.get("id") or payload.get("uuid") or len(state.tasks) + 1)
+        task_id = str(
+            payload.get("task_id")
+            or payload.get("id")
+            or payload.get("uuid")
+            or len(state.tasks) + 1
+        )
         state.tasks[task_id] = payload
         logger.info("Accepted task", extra={"task_id": task_id, "payload": payload})
         return JSONResponse({"status": "accepted", "task_id": task_id})
@@ -46,7 +62,9 @@ def create_app() -> FastAPI:
         if not task_id:
             raise HTTPException(status_code=400, detail="task_id is required")
         if task_id not in state.tasks:
-            logger.warning("Received cancellation for unknown task", extra={"task_id": task_id})
+            logger.warning(
+                "Received cancellation for unknown task", extra={"task_id": task_id}
+            )
         else:
             state.tasks[task_id]["cancelled"] = True
             logger.info("Cancelled task", extra={"task_id": task_id})
@@ -81,3 +99,19 @@ def run(host: str = "127.0.0.1", port: int = 9000) -> None:
 
 if __name__ == "__main__":
     run()
+
+
+"""
+curl -X POST "http://127.0.0.1:9000/task" \
+    -H "Content-Type: application/json" \
+    -d '{"task_id": "1", "service": "sync", "user_id": "alice", "parameters": {"input": "123456"}}' | jq
+  
+
+curl -X POST "http://127.0.0.1:9000/task" \
+    -H "Content-Type: application/json" \
+    -d '{"service": "sync", "user_id": "alice", "parameters": {"input": "hello"}}' | jq
+  
+curl -X POST "http://127.0.0.1:9000/cancel" \
+    -H "Content-Type: application/json" \
+    -d '{"task_id": "1"}' | jq
+"""
