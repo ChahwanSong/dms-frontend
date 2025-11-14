@@ -53,7 +53,13 @@ class TaskService:
     async def get_task(self, task_id: str) -> TaskRecord | None:
         return await self._repository.get(task_id)
 
-    async def cancel_task(self, task_id: str, *, service: Optional[str] = None, user_id: Optional[str] = None) -> TaskRecord | None:
+    async def cancel_task(
+        self,
+        task_id: str,
+        *,
+        service: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> TaskRecord | None:
         record = await self._repository.get(task_id)
         if not record:
             return None
@@ -61,11 +67,28 @@ class TaskService:
             return None
         if user_id and record.user_id != user_id:
             return None
-        await self._events.publish(TaskCancellation(payload={
-            "task_id": task_id,
-            "service": record.service,
-            "user_id": record.user_id,
-        }))
+
+        if record.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED, TaskStatus.FAILED}:
+            return record
+
+        if record.status is not TaskStatus.CANCEL_REQUESTED:
+            record = await self._repository.set_status(
+                task_id,
+                TaskStatus.CANCEL_REQUESTED,
+                log_entry="Cancellation requested",
+            )
+            if not record:  # pragma: no cover - defensive, repository guarantees record exists
+                return None
+
+        await self._events.publish(
+            TaskCancellation(
+                payload={
+                    "task_id": task_id,
+                    "service": record.service,
+                    "user_id": record.user_id,
+                }
+            )
+        )
         return record
 
     async def cleanup_task(self, task_id: str, *, service: Optional[str] = None, user_id: Optional[str] = None) -> bool:

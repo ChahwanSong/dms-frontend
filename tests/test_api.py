@@ -90,6 +90,7 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
 
     cancel_response = await test_app.post(f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"})
     assert cancel_response.status_code == 200
+    assert cancel_response.json()["task"]["status"] == "cancel_requested"
 
     async def _task_cancelled() -> bool:
         response = await test_app.get(f"/api/v1/services/scan/tasks/{task_id}", params={"user_id": "bob"})
