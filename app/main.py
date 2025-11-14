@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 
 from app.core.config import get_settings
@@ -10,19 +12,19 @@ from .api.routes import meta, operator, user
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title=settings.app_name, version=settings.version)
+
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await init_services(settings=settings)
+        try:
+            yield
+        finally:
+            await shutdown_services()
+
+    app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 
     app.include_router(meta.router, prefix=settings.api_prefix)
     app.include_router(user.router, prefix=settings.api_prefix)
     app.include_router(operator.router, prefix=settings.api_prefix)
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        await init_services(settings=settings)
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        await shutdown_services()
 
     return app
 
