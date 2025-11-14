@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from redis.asyncio import Redis
@@ -10,6 +11,8 @@ from app.services.event_processor import TaskEventProcessor
 from app.services.repository import InMemoryTaskRepository, RedisTaskRepository, TaskRepository
 from app.services.scheduler import SchedulerClient
 from app.services.tasks import TaskService
+
+logger = logging.getLogger(__name__)
 
 _settings: Optional[Settings] = None
 _task_service: Optional[TaskService] = None
@@ -37,6 +40,14 @@ async def init_services(
         else:
             _redis_writer = Redis.from_url(_settings.redis_write_url, decode_responses=True)
             _redis_reader = Redis.from_url(_settings.redis_read_url, decode_responses=True)
+            try:
+                await _redis_writer.ping()
+                await _redis_reader.ping()
+            except Exception:
+                logger.exception("Failed to connect to Redis during startup")
+                raise
+            else:
+                logger.info("Successfully connected to Redis for read/write operations")
             repository = RedisTaskRepository(reader=_redis_reader, writer=_redis_writer)
     else:
         _redis_reader = None
