@@ -48,7 +48,11 @@ async def init_services(
                 raise
             else:
                 logger.info("Successfully connected to Redis for read/write operations")
-            repository = RedisTaskRepository(reader=_redis_reader, writer=_redis_writer)
+            repository = RedisTaskRepository(
+                reader=_redis_reader,
+                writer=_redis_writer,
+                ttl_seconds=_settings.redis_task_ttl_seconds,
+            )
     else:
         _redis_reader = None
         _redis_writer = None

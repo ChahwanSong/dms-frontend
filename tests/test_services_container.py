@@ -38,9 +38,10 @@ class _StubTaskService:
 
 
 class _StubRepository:
-    def __init__(self, *, reader: Any, writer: Any) -> None:
+    def __init__(self, *, reader: Any, writer: Any, ttl_seconds: int) -> None:
         self.reader = reader
         self.writer = writer
+        self.ttl_seconds = ttl_seconds
 
 
 @pytest.fixture(autouse=True)
