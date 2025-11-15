@@ -50,9 +50,12 @@ _T = TypeVar("_T")
 class RedisTaskRepository(TaskRepository):
     """Task repository backed by Redis key value store."""
 
-    def __init__(self, reader: Redis, writer: Redis) -> None:
+    def __init__(self, reader: Redis, writer: Redis, *, ttl_seconds: int) -> None:
+        if ttl_seconds <= 0:
+            raise ValueError("ttl_seconds must be a positive integer")
         self._reader = reader
         self._writer = writer
+        self._ttl_seconds = int(ttl_seconds)
 
     async def _execute(self, command: Awaitable[_T] | _T) -> _T:
         if inspect.isawaitable(command):
@@ -64,10 +67,21 @@ class RedisTaskRepository(TaskRepository):
         return str(next_id)
 
     async def save(self, task: TaskRecord) -> None:
-        await self._execute(self._writer.set(self._task_key(task.task_id), task.model_dump_json()))
+        await self._execute(
+            self._writer.set(
+                self._task_key(task.task_id),
+                task.model_dump_json(),
+                ex=self._ttl_seconds,
+            )
+        )
         await self._execute(self._writer.sadd("index:tasks", task.task_id))
-        await self._execute(self._writer.sadd(self._service_index(task.service), task.task_id))
-        await self._execute(self._writer.sadd(self._service_user_index(task.service, task.user_id), task.task_id))
+        await self._ensure_ttl("index:tasks")
+        service_index = self._service_index(task.service)
+        await self._execute(self._writer.sadd(service_index, task.task_id))
+        await self._ensure_ttl(service_index)
+        service_user_index = self._service_user_index(task.service, task.user_id)
+        await self._execute(self._writer.sadd(service_user_index, task.task_id))
+        await self._ensure_ttl(service_user_index)
 
     async def get(self, task_id: str) -> TaskRecord | None:
         raw = await self._execute(self._reader.get(self._task_key(task_id)))
@@ -136,6 +150,9 @@ class RedisTaskRepository(TaskRepository):
     @staticmethod
     def _service_user_index(service: str, user_id: str) -> str:
         return f"index:service:{service}:user:{user_id}"
+
+    async def _ensure_ttl(self, key: str) -> None:
+        await self._execute(self._writer.expire(key, self._ttl_seconds))
 
 
 class InMemoryTaskRepository(TaskRepository):

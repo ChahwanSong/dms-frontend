@@ -9,7 +9,7 @@ Both implementations operate on `TaskRecord` models from `app/services/models.py
 
 ## Redis-backed data layout
 
-`RedisTaskRepository` uses a combination of simple keys and set-based indexes to organise task state. All keys are stored in a single Redis logical database and follow the naming convention described below.
+`RedisTaskRepository` uses a combination of simple keys and set-based indexes to organise task state. All keys are stored in a single Redis logical database and follow the naming convention described below. Every key that the repository writes is assigned a time-to-live (TTL) configured through `Settings.redis_task_ttl_seconds` (default: 90 days) so that stale metadata is automatically purged.
 
 ### Primary task store
 
@@ -52,6 +52,7 @@ When a task is saved via `save`:
 2. The task ID is added to the global set `index:tasks`.
 3. The task ID is inserted into `index:service:{service}` for service-level filtering.
 4. The task ID is inserted into `index:service:{service}:user:{user_id}` for per-user filtering.
+5. TTLs on the primary key and each index key are refreshed to honour the configured expiry window.
 
 Deleting a task removes the primary key and prunes its ID from all three index sets.
 

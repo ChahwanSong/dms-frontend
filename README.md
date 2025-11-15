@@ -73,6 +73,7 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_API_PREFIX` | `/api/v1` | Versioned API root |
 | `DMS_REDIS_WRITE_URL` | `redis://haproxy-redis.redis.svc.cluster.local:6379/0` | Redis writer endpoint |
 | `DMS_REDIS_READ_URL` | `redis://haproxy-redis.redis.svc.cluster.local:6380/0` | Redis reader endpoint |
+| `DMS_REDIS_TASK_TTL_SECONDS` | `7776000` | Expiry (in seconds) applied to task metadata and indexes |
 | `DMS_SCHEDULER_BASE_URL` | `http://dms-scheduler` | Base URL for the downstream scheduler |
 | `DMS_SCHEDULER_TASK_ENDPOINT` | `/task` | Relative submission path |
 | `DMS_SCHEDULER_CANCEL_ENDPOINT` | `/cancel` | Relative cancellation path |
