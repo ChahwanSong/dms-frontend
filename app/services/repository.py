@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import abc
 from datetime import datetime, timezone
-from typing import Iterable, List
+import inspect
+from typing import Awaitable, Iterable, List, TypeVar, cast
 
 from redis.asyncio import Redis
 
@@ -43,6 +44,9 @@ class TaskRepository(abc.ABC):
     async def list_by_service_and_user(self, service: str, user_id: str) -> List[TaskRecord]: ...
 
 
+_T = TypeVar("_T")
+
+
 class RedisTaskRepository(TaskRepository):
     """Task repository backed by Redis key value store."""
 
@@ -50,18 +54,23 @@ class RedisTaskRepository(TaskRepository):
         self._reader = reader
         self._writer = writer
 
+    async def _execute(self, command: Awaitable[_T] | _T) -> _T:
+        if inspect.isawaitable(command):
+            return await cast(Awaitable[_T], command)
+        return cast(_T, command)
+
     async def next_task_id(self) -> str:
-        next_id = await self._writer.incr("task:id:sequence")
+        next_id = await self._execute(self._writer.incr("task:id:sequence"))
         return str(next_id)
 
     async def save(self, task: TaskRecord) -> None:
-        await self._writer.set(self._task_key(task.task_id), task.model_dump_json())
-        await self._writer.sadd("index:tasks", task.task_id)
-        await self._writer.sadd(self._service_index(task.service), task.task_id)
-        await self._writer.sadd(self._service_user_index(task.service, task.user_id), task.task_id)
+        await self._execute(self._writer.set(self._task_key(task.task_id), task.model_dump_json()))
+        await self._execute(self._writer.sadd("index:tasks", task.task_id))
+        await self._execute(self._writer.sadd(self._service_index(task.service), task.task_id))
+        await self._execute(self._writer.sadd(self._service_user_index(task.service, task.user_id), task.task_id))
 
     async def get(self, task_id: str) -> TaskRecord | None:
-        raw = await self._reader.get(self._task_key(task_id))
+        raw = await self._execute(self._reader.get(self._task_key(task_id)))
         if not raw:
             return None
         return TaskRecord.model_validate_json(raw)
@@ -70,10 +79,10 @@ class RedisTaskRepository(TaskRepository):
         task = await self.get(task_id)
         if not task:
             return
-        await self._writer.delete(self._task_key(task_id))
-        await self._writer.srem("index:tasks", task_id)
-        await self._writer.srem(self._service_index(task.service), task_id)
-        await self._writer.srem(self._service_user_index(task.service, task.user_id), task_id)
+        await self._execute(self._writer.delete(self._task_key(task_id)))
+        await self._execute(self._writer.srem("index:tasks", task_id))
+        await self._execute(self._writer.srem(self._service_index(task.service), task_id))
+        await self._execute(self._writer.srem(self._service_user_index(task.service, task.user_id), task_id))
 
     async def set_status(self, task_id: str, status: TaskStatus, *, log_entry: str | None = None) -> TaskRecord | None:
         task = await self.get(task_id)
@@ -99,19 +108,21 @@ class RedisTaskRepository(TaskRepository):
         ids_list = list(ids)
         if not ids_list:
             return []
-        raw_values = await self._reader.mget([self._task_key(task_id) for task_id in ids_list])
+        raw_values = await self._execute(
+            self._reader.mget([self._task_key(task_id) for task_id in ids_list])
+        )
         return [TaskRecord.model_validate_json(raw) for raw in raw_values if raw]
 
     async def list_all(self) -> List[TaskRecord]:
-        ids = await self._reader.smembers("index:tasks")
+        ids = await self._execute(self._reader.smembers("index:tasks"))
         return await self.list_by_ids(ids)
 
     async def list_by_service(self, service: str) -> List[TaskRecord]:
-        ids = await self._reader.smembers(self._service_index(service))
+        ids = await self._execute(self._reader.smembers(self._service_index(service)))
         return await self.list_by_ids(ids)
 
     async def list_by_service_and_user(self, service: str, user_id: str) -> List[TaskRecord]:
-        ids = await self._reader.smembers(self._service_user_index(service, user_id))
+        ids = await self._execute(self._reader.smembers(self._service_user_index(service, user_id)))
         return await self.list_by_ids(ids)
 
     @staticmethod
