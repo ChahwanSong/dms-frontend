@@ -31,7 +31,7 @@ dev = [
 dms-frontend = "cli.main:main"
 
 [tool.setuptools]
-packages = ["cli", "app"]
+packages = ["cli", "app", "task_state"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

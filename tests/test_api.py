@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from collections.abc import AsyncIterator
+from collections import defaultdict
+from collections.abc import AsyncIterator, Iterable
+from datetime import datetime, timezone
+from typing import Any
 
 import pytest
-from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
+from httpx import ASGITransport, AsyncClient
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.services.models import TaskRecord, TaskStatus
+from app.services.repository import TaskRepository
 
 
 class StubSchedulerClient:
-    def __init__(self, settings) -> None:
+    def __init__(self, settings: Any) -> None:
         self.submissions: list[dict] = []
         self.cancellations: list[dict] = []
 
@@ -27,15 +31,91 @@ class StubSchedulerClient:
         return None
 
 
+class _FakeRepository(TaskRepository):
+    def __init__(self) -> None:
+        self._store: dict[str, TaskRecord] = {}
+        self._service_index: dict[str, set[str]] = defaultdict(set)
+        self._service_user_index: dict[tuple[str, str], set[str]] = defaultdict(set)
+        self._sequence = 0
+
+    async def next_task_id(self) -> str:
+        self._sequence += 1
+        return str(self._sequence)
+
+    async def save(self, task: TaskRecord) -> None:
+        self._store[task.task_id] = task
+        self._service_index[task.service].add(task.task_id)
+        self._service_user_index[(task.service, task.user_id)].add(task.task_id)
+
+    async def get(self, task_id: str) -> TaskRecord | None:
+        return self._store.get(task_id)
+
+    async def delete(self, task_id: str) -> None:
+        task = self._store.pop(task_id, None)
+        if not task:
+            return
+        self._service_index[task.service].discard(task_id)
+        self._service_user_index[(task.service, task.user_id)].discard(task_id)
+
+    async def set_status(
+        self, task_id: str, status: TaskStatus, *, log_entry: str | None = None
+    ) -> TaskRecord | None:
+        task = await self.get(task_id)
+        if not task:
+            return None
+        task.status = status
+        task.updated_at = datetime.now(timezone.utc)
+        if log_entry:
+            task.logs.append(log_entry)
+        await self.save(task)
+        return task
+
+    async def append_log(self, task_id: str, message: str) -> TaskRecord | None:
+        task = await self.get(task_id)
+        if not task:
+            return None
+        task.logs.append(message)
+        await self.save(task)
+        return task
+
+    async def list_by_ids(self, ids: Iterable[str]) -> list[TaskRecord]:
+        return [self._store[task_id] for task_id in ids if task_id in self._store]
+
+    async def list_all(self) -> list[TaskRecord]:
+        return list(self._store.values())
+
+    async def list_by_service(self, service: str) -> list[TaskRecord]:
+        return [self._store[task_id] for task_id in self._service_index.get(service, set())]
+
+    async def list_by_service_and_user(self, service: str, user_id: str) -> list[TaskRecord]:
+        key = (service, user_id)
+        return [self._store[task_id] for task_id in self._service_user_index.get(key, set())]
+
+
+class _FakeRedisProvider:
+    def __init__(self, settings: Any) -> None:
+        self.settings = settings
+        self.repository = _FakeRepository()
+        self.closed = False
+
+    async def get_repository(self) -> _FakeRepository:
+        return self.repository
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 @pytest.fixture
-async def test_app(monkeypatch) -> AsyncIterator[AsyncClient]:
-    monkeypatch.setenv("DMS_USE_IN_MEMORY_STORE", "true")
+async def test_app(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     monkeypatch.setenv("DMS_OPERATOR_TOKEN", "secret")
+    monkeypatch.setenv("DMS_REDIS_WRITE_URL", "redis://write")
+    monkeypatch.setenv("DMS_REDIS_READ_URL", "redis://read")
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
     from app import services_container
 
     monkeypatch.setattr(services_container, "SchedulerClient", StubSchedulerClient)
+    monkeypatch.setattr(services_container, "RedisRepositoryProvider", _FakeRedisProvider)
 
     app = create_app()
 
