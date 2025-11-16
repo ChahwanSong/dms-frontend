@@ -1,0 +1,15 @@
+[project]
+name = "external-status-service"
+version = "0.1.0"
+description = "Example worker that publishes task state updates via Redis"
+requires-python = ">=3.11"
+dependencies = [
+    "redis>=5.0",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+local = ["task_state @ file://../.."]
+
+[project.scripts]
+external-status-worker = "worker:main"

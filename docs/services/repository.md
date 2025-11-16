@@ -1,11 +1,6 @@
 # Task Repository Architecture
 
-This document describes the storage layout and indexing strategy used by `app/services/repository.py` for persisting asynchronous task metadata. Two repository implementations share the same logical model:
-
-* `RedisTaskRepository` — production-grade implementation backed by Redis.
-* `InMemoryTaskRepository` — in-process implementation that mirrors the Redis behaviour for tests.
-
-Both implementations operate on `TaskRecord` models from `app/services/models.py`, which capture the task identifier, owning service, user, status, parameters, timestamps, and log messages.
+This document describes the storage layout and indexing strategy used by `task_state.repository` for persisting asynchronous task metadata. `RedisTaskRepository` operates on `TaskRecord` models from `task_state.models`, which capture the task identifier, owning service, user, status, parameters, timestamps, and log messages.
 
 ## Redis-backed data layout
 
@@ -60,17 +55,6 @@ Deleting a task removes the primary key and prunes its ID from all three index s
 
 `set_status` and `append_log` load the `TaskRecord`, mutate its status or log list, update the `updated_at` timestamp, and call `save` to persist the changes. Because `save` rewrites the primary store and refreshes the index memberships, the indexes stay in sync automatically.
 
-## In-memory mirror implementation
-
-`InMemoryTaskRepository` mimics the Redis behaviour using Python dictionaries and sets:
-
-* `_store` maps task IDs to `TaskRecord` instances, equivalent to `task:{task_id}`.
-* `_service_index` maps a service name to a `set` of task IDs.
-* `_service_user_index` maps `(service, user_id)` tuples to a `set` of task IDs.
-* `_sequence` is an integer counter producing IDs for `next_task_id`.
-
-Because the in-memory repository exposes the same interface and maintains the same secondary indexes, it can be used interchangeably in tests to validate service logic without requiring Redis.
-
 ## Query capabilities
 
 The repository interface exposed by `TaskRepository` supports the following access patterns:
@@ -82,3 +66,7 @@ The repository interface exposed by `TaskRepository` supports the following acce
 * Combined service and user filtering (`list_by_service_and_user`).
 
 All implementations are expected to maintain the indexes described above to guarantee that the queries return consistent, up-to-date results.
+
+## Using the shared repository package
+
+The `task_state` package published in this repository wraps the Redis layout described above so that other projects can record task lifecycle updates without reimplementing the storage strategy. See `docs/services/task_state.md` for configuration, installation, and code samples that demonstrate how to instantiate a repository in another service.

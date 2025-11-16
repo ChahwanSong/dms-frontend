@@ -22,8 +22,8 @@ The service is event driven and composed of the following layers:
   `X-Operator-Token` header, and a help endpoint. 
 - **Task service** (`app/services/tasks.py`) centralises business logic for creating, listing, cancelling, and cleaning up tasks
   while enforcing service/user scoping rules. 
-- **Task repository** (`app/services/repository.py`) abstracts persistence; use Redis in production or an in-memory store for
-  testing/development. 
+- **Task repository** (`task_state/repository.py` exposed via `app/services/repository.py`) abstracts persistence with a
+  Redis-backed implementation.
 - **Event processor** (`app/services/event_processor.py`) handles asynchronous fan-out to the scheduler using a configurable
   pool of worker coroutines. 
 - **Scheduler client** (`app/services/scheduler.py`) issues HTTP calls to the `dms_scheduler` `/task` and `/cancel` endpoints
@@ -44,16 +44,18 @@ app/
   core/               # Configuration, logging, and event definitions
   services/           # Task service, repositories, scheduler client, event processor
   services_container.py
+task_state/           # Reusable task repository, models, and Redis provider
 cli/
   main.py             # Typer CLI entry point ("dms-frontend" console script)
+examples/
+  external_status_service/  # Minimal worker that reuses the shared Redis repository
 tests/
-  test_api.py         # Async API tests with an in-memory store and stub scheduler
+  test_api.py         # Async API tests with a stub repository and stub scheduler
 ```
 
 ## Prerequisites
 - Python 3.11+
-- Redis cluster (write: `haproxy-redis.redis.svc.cluster.local:6379`, read: `haproxy-redis.redis.svc.cluster.local:6380`) or the
-  in-memory store for local development
+- Redis cluster (write: `haproxy-redis.redis.svc.cluster.local:6379`, read: `haproxy-redis.redis.svc.cluster.local:6380`)
 - Access to the `dms_scheduler` service inside the Kubernetes cluster
 
 ## Installation
@@ -62,8 +64,6 @@ tests/
    ```bash
    pip install -e .[dev]
    ```
-3. (Optional) If running locally without Redis, export `DMS_USE_IN_MEMORY_STORE=true` before starting the API.
-
 ## Configuration
 All configuration comes from environment variables with the `DMS_` prefix, provided by `app/core/config.py`. 
 
@@ -85,9 +85,7 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_CLI_DEFAULT_HOST` | `0.0.0.0` | CLI `serve` host |
 | `DMS_CLI_DEFAULT_PORT` | `8000` | CLI `serve` port |
 | `DMS_CLI_RELOAD` | `false` | Enable autoreload in development |
-| `DMS_USE_IN_MEMORY_STORE` | `false` | Switch to the in-memory repository |
-
-Use `dms-frontend show-config` to print the effective configuration at runtime. 
+Use `dms-frontend show-config` to print the effective configuration at runtime.
 
 ## Running the service
 ### Via the CLI
@@ -143,8 +141,15 @@ token="$(printenv DMS_OPERATOR_TOKEN)"
 curl "http://localhost:8000/api/v1/admin/tasks" -H "X-Operator-Token: ${token}"
 ```
 
+### External status publisher example
+
+The `task_state` package can be reused by other services to write task updates against the same Redis
+cluster. The `examples/external_status_service` project provides a minimal asyncio worker that registers a task,
+publishes lifecycle events, and appends execution logs using the shared repository helper. Install it in editable
+mode alongside the main service to experiment with multi-project integrations.
+
 ## Testing
-Automated tests rely on the in-memory repository and a stub scheduler. To run them:
+Automated tests rely on stubbed Redis providers and a stub scheduler. To run them:
 ```bash
 pytest
 ```
