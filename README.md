@@ -125,20 +125,54 @@ The `/help` response mirrors this table and is available at `/api/v1/help`.
 Assuming the service is running locally on port 8000:
 
 ```bash
+# API prefix for convenience
+api_prefix="http://localhost:8000/api/v1"
+
 # Submit a synchronous task for user "alice"
-curl -X POST "http://localhost:8000/api/v1/services/sync/users/alice/tasks?input=value"
+curl -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
+
+# Submit a task with multiple query params (becomes task inputs)
+curl -X POST "${api_prefix}/services/sync/users/alice/tasks" \
+  --data "" --get \
+  --data-urlencode "input=value" \
+  --data-urlencode "mode=fast"
+
+# Fetch task status scoped to the user
+task_id="<task-id>"
+curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+
+# Fetch task logs scoped to the user
+curl "${api_prefix}/services/sync/tasks/${task_id}/logs?user_id=alice"
 
 # List user tasks
-curl "http://localhost:8000/api/v1/services/sync/users/alice/tasks"
+curl "${api_prefix}/services/sync/users/alice/tasks"
 
 # Cancel a task
-task_id="<task-id>"
-curl -X POST "http://localhost:8000/api/v1/services/sync/tasks/${task_id}/cancel" \
+curl -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=alice"
+
+# Delete task metadata and logs (user-scoped)
+curl -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Operator listing with token
 token="$(printenv DMS_OPERATOR_TOKEN)"
-curl "http://localhost:8000/api/v1/admin/tasks" -H "X-Operator-Token: ${token}"
+curl "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
+
+# Operator cancellation of any task
+curl -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"
+
+# Operator cleanup of task metadata/logs
+curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
+
+# Start the service via the Typer CLI (honours env vars for host/port)
+dms-frontend serve --host 0.0.0.0 --port 8000
+
+# Interact with the API via the Typer CLI helpers
+dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"
+dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --param input=value --param mode=fast
+dms-frontend tasks cancel --task-id "${task_id}" --api-base "${api_prefix}" --user alice
+dms-frontend tasks logs --task-id "${task_id}" --api-base "${api_prefix}" --user alice
+dms-frontend tasks delete --task-id "${task_id}" --api-base "${api_prefix}" --user alice
 ```
 
 ### External status publisher example
