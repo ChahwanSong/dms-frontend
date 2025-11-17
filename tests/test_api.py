@@ -110,6 +110,9 @@ class _FakeRedisProvider:
     async def get_repository(self) -> _FakeRepository:
         return self.repository
 
+    async def start_key_expiration_listener(self) -> None:
+        return None
+
     async def close(self) -> None:
         self.closed = True
 
