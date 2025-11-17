@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     api_prefix: str = "/api/v1"
 
-    redis_write_url: str = "redis://haproxy-redis.redis.svc.cluster.local:6379/0"
-    redis_read_url: str = "redis://haproxy-redis.redis.svc.cluster.local:6380/0"
+    redis_write_url: str = "redis://haproxy-redis.dms-redis.svc.cluster.local:6379/0"
+    redis_read_url: str = "redis://haproxy-redis.dms-redis.svc.cluster.local:6380/0"
     redis_task_ttl_seconds: int = 90 * 24 * 60 * 60
 
     scheduler_base_url: str = "http://dms-scheduler"
