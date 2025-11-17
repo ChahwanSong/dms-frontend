@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 10.0
 
     log_level: str = "INFO"
-    log_json: bool = True
+    log_json: bool = False
 
     cli_default_host: str = "0.0.0.0"
     cli_default_port: int = 8000
