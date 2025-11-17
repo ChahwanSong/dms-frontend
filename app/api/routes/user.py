@@ -4,12 +4,23 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from app.services.models import TaskCreateResult, TaskListResponse, TaskStatusResponse
+from app.services.models import (
+    TaskCreateResult,
+    TaskListResponse,
+    TaskStatusResponse,
+    TaskUserListResponse,
+)
 from app.services.tasks import TaskService
 
 from ..dependencies import get_task_service
 
 router = APIRouter(tags=["user"], prefix="/services")
+
+
+@router.get("/{service}/users", response_model=TaskUserListResponse)
+async def list_service_users(service: str, task_service: TaskService = Depends(get_task_service)) -> TaskUserListResponse:
+    users = await task_service.list_service_users(service)
+    return TaskUserListResponse(users=users)
 
 
 @router.get("/{service}/users/{user_id}/tasks", response_model=TaskListResponse)
@@ -27,14 +38,6 @@ async def create_task(service: str, user_id: str, request: Request, task_service
 
 @router.get("/{service}/tasks/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(service: str, task_id: str, user_id: str = Query(...), task_service: TaskService = Depends(get_task_service)) -> TaskStatusResponse:
-    task = await task_service.get_task(task_id)
-    if not task or task.service != service or task.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    return TaskStatusResponse(task=task)
-
-
-@router.get("/{service}/tasks/{task_id}/logs", response_model=TaskStatusResponse)
-async def get_task_logs(service: str, task_id: str, user_id: str = Query(...), task_service: TaskService = Depends(get_task_service)) -> TaskStatusResponse:
     task = await task_service.get_task(task_id)
     if not task or task.service != service or task.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")

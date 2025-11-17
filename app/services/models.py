@@ -20,6 +20,10 @@ class TaskStatusResponse(BaseModel):
     task: TaskRecord
 
 
+class TaskUserListResponse(BaseModel):
+    users: List[str]
+
+
 class HelpResponse(BaseModel):
     endpoints: Iterable[str]
     description: Optional[str] = None

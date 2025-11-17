@@ -36,6 +36,7 @@ class _FakeRepository(TaskRepository):
         self._store: dict[str, TaskRecord] = {}
         self._service_index: dict[str, set[str]] = defaultdict(set)
         self._service_user_index: dict[tuple[str, str], set[str]] = defaultdict(set)
+        self._service_users: dict[str, set[str]] = defaultdict(set)
         self._sequence = 0
 
     async def next_task_id(self) -> str:
@@ -46,6 +47,7 @@ class _FakeRepository(TaskRepository):
         self._store[task.task_id] = task
         self._service_index[task.service].add(task.task_id)
         self._service_user_index[(task.service, task.user_id)].add(task.task_id)
+        self._service_users[task.service].add(task.user_id)
 
     async def get(self, task_id: str) -> TaskRecord | None:
         return self._store.get(task_id)
@@ -56,6 +58,8 @@ class _FakeRepository(TaskRepository):
             return
         self._service_index[task.service].discard(task_id)
         self._service_user_index[(task.service, task.user_id)].discard(task_id)
+        if not self._service_user_index[(task.service, task.user_id)]:
+            self._service_users[task.service].discard(task.user_id)
 
     async def set_status(
         self, task_id: str, status: TaskStatus, *, log_entry: str | None = None
@@ -90,6 +94,9 @@ class _FakeRepository(TaskRepository):
     async def list_by_service_and_user(self, service: str, user_id: str) -> list[TaskRecord]:
         key = (service, user_id)
         return [self._store[task_id] for task_id in self._service_user_index.get(key, set())]
+
+    async def list_users_by_service(self, service: str) -> list[str]:
+        return list(self._service_users.get(service, set()))
 
 
 class _FakeRedisProvider:
@@ -177,3 +184,15 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
         return response.status_code == 200 and response.json()["task"]["status"] == "cancelled"
 
     await wait_for_condition(_task_cancelled)
+
+
+@pytest.mark.asyncio
+async def test_service_user_listing(test_app: AsyncClient) -> None:
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    await test_app.post("/api/v1/services/sync/users/bob/tasks")
+    await test_app.post("/api/v1/services/scan/users/charlie/tasks")
+
+    response = await test_app.get("/api/v1/services/sync/users")
+    assert response.status_code == 200
+    users = set(response.json()["users"])
+    assert users == {"alice", "bob"}

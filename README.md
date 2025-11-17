@@ -111,7 +111,6 @@ All paths are rooted at `/api/v1` by default.
 | GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | None |
 | POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | None |
 | GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | None |
-| GET | `/services/{service}/tasks/{task_id}/logs?user_id=` | Fetch task logs scoped to the user | None |
 | POST | `/services/{service}/tasks/{task_id}/cancel?user_id=` | Request task cancellation | None |
 | DELETE | `/services/{service}/tasks/{task_id}?user_id=` | Delete task metadata and logs (user-scoped) | None |
 | GET | `/admin/tasks` | List all tasks across services | `X-Operator-Token` header |
@@ -119,7 +118,7 @@ All paths are rooted at `/api/v1` by default.
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
 | DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs | `X-Operator-Token` header |
 
-The `/help` response mirrors this table and is available at `/api/v1/help`. 
+Task status responses include the latest log entries alongside metadata, so a dedicated log-only endpoint is unnecessary. The `/help` response mirrors this table and is available at `/api/v1/help`.
 
 ## Usage examples
 Assuming the service is running locally on port 8000:
@@ -141,8 +140,8 @@ curl -X POST "${api_prefix}/services/sync/users/alice/tasks" \
 task_id="<task-id>"
 curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
-# Fetch task logs scoped to the user
-curl "${api_prefix}/services/sync/tasks/${task_id}/logs?user_id=alice"
+# List users who submitted sync tasks
+curl "${api_prefix}/services/sync/users"
 
 # List user tasks
 curl "${api_prefix}/services/sync/users/alice/tasks"
@@ -167,12 +166,12 @@ curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${to
 # Start the service via the Typer CLI (honours env vars for host/port)
 dms-frontend serve --host 0.0.0.0 --port 8000
 
-# Interact with the API via the Typer CLI helpers
+# Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
 dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"
+dms-frontend tasks users --service sync --api-base "${api_prefix}"
 dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --param input=value --param mode=fast
-dms-frontend tasks cancel --task-id "${task_id}" --api-base "${api_prefix}" --user alice
-dms-frontend tasks logs --task-id "${task_id}" --api-base "${api_prefix}" --user alice
-dms-frontend tasks delete --task-id "${task_id}" --api-base "${api_prefix}" --user alice
+dms-frontend tasks cancel --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
+dms-frontend tasks delete --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
 ```
 
 ### External status publisher example

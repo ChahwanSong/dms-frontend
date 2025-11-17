@@ -47,6 +47,9 @@ class TaskRepository(abc.ABC):
     @abc.abstractmethod
     async def list_by_service_and_user(self, service: str, user_id: str) -> List[TaskRecord]: ...
 
+    @abc.abstractmethod
+    async def list_users_by_service(self, service: str) -> List[str]: ...
+
 
 _T = TypeVar("_T")
 
@@ -83,6 +86,9 @@ class RedisTaskRepository(TaskRepository):
         service_index = self._service_index(task.service)
         await self._execute(self._writer.sadd(service_index, task.task_id))
         await self._ensure_ttl(service_index)
+        service_users_index = self._service_users_index(task.service)
+        await self._execute(self._writer.sadd(service_users_index, task.user_id))
+        await self._ensure_ttl(service_users_index)
         service_user_index = self._service_user_index(task.service, task.user_id)
         await self._execute(self._writer.sadd(service_user_index, task.task_id))
         await self._ensure_ttl(service_user_index)
@@ -103,6 +109,7 @@ class RedisTaskRepository(TaskRepository):
         await self._execute(
             self._writer.srem(self._service_user_index(task.service, task.user_id), task_id)
         )
+        await self._cleanup_user_index(task.service, task.user_id)
 
     async def set_status(
         self, task_id: str, status: TaskStatus, *, log_entry: str | None = None
@@ -149,6 +156,10 @@ class RedisTaskRepository(TaskRepository):
         )
         return await self.list_by_ids(ids)
 
+    async def list_users_by_service(self, service: str) -> List[str]:
+        raw_users = await self._execute(self._reader.smembers(self._service_users_index(service)))
+        return [user.decode() if isinstance(user, bytes) else str(user) for user in raw_users]
+
     @staticmethod
     def _task_key(task_id: str) -> str:
         return f"task:{task_id}"
@@ -161,6 +172,19 @@ class RedisTaskRepository(TaskRepository):
     def _service_user_index(service: str, user_id: str) -> str:
         return f"index:service:{service}:user:{user_id}"
 
+    @staticmethod
+    def _service_users_index(service: str) -> str:
+        return f"index:service:{service}:users"
+
     async def _ensure_ttl(self, key: str) -> None:
         await self._execute(self._writer.expire(key, self._ttl_seconds))
+
+    async def _cleanup_user_index(self, service: str, user_id: str) -> None:
+        service_user_index = self._service_user_index(service, user_id)
+        remaining = await self._execute(self._reader.scard(service_user_index))
+        if remaining:
+            await self._ensure_ttl(service_user_index)
+            return
+        await self._execute(self._writer.srem(self._service_users_index(service), user_id))
+        await self._ensure_ttl(self._service_users_index(service))
 
