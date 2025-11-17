@@ -15,6 +15,7 @@ async def test_save_applies_ttl_to_all_keys() -> None:
     writer.set = AsyncMock(return_value=True)
     writer.sadd = AsyncMock(return_value=1)
     writer.expire = AsyncMock(return_value=True)
+    writer.hset = AsyncMock(return_value=True)
 
     repository = RedisTaskRepository(reader=reader, writer=writer, ttl_seconds=1234)
     task = TaskRecord(task_id="1", service="svc", user_id="user", status=TaskStatus.PENDING)
@@ -31,8 +32,12 @@ async def test_save_applies_ttl_to_all_keys() -> None:
         ("index:service:svc", 1234),
         ("index:service:svc:users", 1234),
         ("index:service:svc:user:user", 1234),
+        ("task:1:metadata", 1234 + repository._METADATA_TTL_GRACE_SECONDS),
     }
     assert expected_keys.issubset(expire_calls)
+    writer.hset.assert_awaited_with(
+        "task:1:metadata", mapping={"service": "svc", "user_id": "user"}
+    )
 
 
 def test_repository_rejects_non_positive_ttl() -> None:
@@ -41,3 +46,25 @@ def test_repository_rejects_non_positive_ttl() -> None:
 
     with pytest.raises(ValueError):
         RedisTaskRepository(reader=reader, writer=writer, ttl_seconds=0)
+
+
+@pytest.mark.asyncio
+async def test_handle_task_expired_cleans_indexes() -> None:
+    reader = Mock()
+    writer = Mock()
+
+    reader.hgetall = AsyncMock(return_value={"service": "svc", "user_id": "user"})
+    writer.srem = AsyncMock(return_value=1)
+    reader.scard = AsyncMock(return_value=0)
+    writer.expire = AsyncMock(return_value=True)
+    writer.delete = AsyncMock(return_value=1)
+
+    repository = RedisTaskRepository(reader=reader, writer=writer, ttl_seconds=50)
+
+    await repository.handle_task_expired("42")
+
+    writer.srem.assert_any_await("index:tasks", "42")
+    writer.srem.assert_any_await("index:service:svc", "42")
+    writer.srem.assert_any_await("index:service:svc:user:user", "42")
+    writer.delete.assert_awaited_with("task:42:metadata")
+    writer.expire.assert_any_await("index:service:svc:users", 50)

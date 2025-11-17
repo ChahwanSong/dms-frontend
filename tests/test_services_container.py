@@ -70,6 +70,7 @@ class _StubRedisProviderFactory:
         self.raise_on_get = False
         self.get_repository = AsyncMock(side_effect=self._get_repository)
         self.close = AsyncMock()
+        self.start_key_expiration_listener = AsyncMock()
 
     async def _get_repository(self) -> Any:
         if self.raise_on_get:
@@ -90,6 +91,7 @@ async def test_init_services_uses_redis_provider(caplog: LogCaptureFixture) -> N
     stub_provider = services_container._redis_provider
     assert isinstance(stub_provider, _StubRedisProviderFactory)
     stub_provider.get_repository.assert_awaited()
+    stub_provider.start_key_expiration_listener.assert_awaited()
     assert "Successfully connected to Redis" in caplog.text
 
     await services_container.shutdown_services()

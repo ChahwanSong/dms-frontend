@@ -69,6 +69,8 @@ _T = TypeVar("_T")
 class RedisTaskRepository(TaskRepository):
     """Task repository backed by Redis key value store."""
 
+    _METADATA_TTL_GRACE_SECONDS = 60
+
     def __init__(
         self, reader: Redis, writer: Redis, *, ttl_seconds: int, tzinfo=None
     ) -> None:
@@ -78,6 +80,7 @@ class RedisTaskRepository(TaskRepository):
         self._writer = writer
         self._ttl_seconds = int(ttl_seconds)
         self._timezone = tzinfo or get_default_timezone()
+        self._metadata_ttl_seconds = self._ttl_seconds + self._METADATA_TTL_GRACE_SECONDS
 
     async def _execute(self, command: Awaitable[_T] | _T) -> _T:
         if inspect.isawaitable(command):
@@ -96,6 +99,7 @@ class RedisTaskRepository(TaskRepository):
                 ex=self._ttl_seconds,
             )
         )
+        await self._save_task_metadata(task)
         await self._execute(self._writer.sadd("index:tasks", task.task_id))
         await self._ensure_ttl("index:tasks")
         service_index = self._service_index(task.service)
@@ -119,12 +123,8 @@ class RedisTaskRepository(TaskRepository):
         if not task:
             return
         await self._execute(self._writer.delete(self._task_key(task_id)))
-        await self._execute(self._writer.srem("index:tasks", task_id))
-        await self._execute(self._writer.srem(self._service_index(task.service), task_id))
-        await self._execute(
-            self._writer.srem(self._service_user_index(task.service, task.user_id), task_id)
-        )
-        await self._cleanup_user_index(task.service, task.user_id)
+        await self._cleanup_indices(task_id, service=task.service, user_id=task.user_id)
+        await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
 
     async def set_status(
         self, task_id: str, status: TaskStatus, *, log_entry: str | None = None
@@ -175,6 +175,19 @@ class RedisTaskRepository(TaskRepository):
         raw_users = await self._execute(self._reader.smembers(self._service_users_index(service)))
         return [user.decode() if isinstance(user, bytes) else str(user) for user in raw_users]
 
+    async def handle_task_expired(self, task_id: str) -> None:
+        """Remove index entries for an expired task if metadata is available."""
+
+        metadata = await self._execute(self._reader.hgetall(self._task_metadata_key(task_id)))
+        service = metadata.get("service") if metadata else None
+        user_id = metadata.get("user_id") if metadata else None
+
+        if not service or not user_id:
+            return
+
+        await self._cleanup_indices(task_id, service=service, user_id=user_id)
+        await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
+
     @staticmethod
     def _task_key(task_id: str) -> str:
         return f"task:{task_id}"
@@ -191,6 +204,10 @@ class RedisTaskRepository(TaskRepository):
     def _service_users_index(service: str) -> str:
         return f"index:service:{service}:users"
 
+    @staticmethod
+    def _task_metadata_key(task_id: str) -> str:
+        return f"task:{task_id}:metadata"
+
     async def _ensure_ttl(self, key: str) -> None:
         await self._execute(self._writer.expire(key, self._ttl_seconds))
 
@@ -202,4 +219,24 @@ class RedisTaskRepository(TaskRepository):
             return
         await self._execute(self._writer.srem(self._service_users_index(service), user_id))
         await self._ensure_ttl(self._service_users_index(service))
+
+    async def _save_task_metadata(self, task: TaskRecord) -> None:
+        metadata_key = self._task_metadata_key(task.task_id)
+        await self._execute(
+            self._writer.hset(
+                metadata_key,
+                mapping={"service": task.service, "user_id": task.user_id},
+            )
+        )
+        await self._execute(
+            self._writer.expire(metadata_key, self._metadata_ttl_seconds)
+        )
+
+    async def _cleanup_indices(self, task_id: str, *, service: str, user_id: str) -> None:
+        await self._execute(self._writer.srem("index:tasks", task_id))
+        await self._execute(self._writer.srem(self._service_index(service), task_id))
+        await self._execute(
+            self._writer.srem(self._service_user_index(service, user_id), task_id)
+        )
+        await self._cleanup_user_index(service, user_id)
 

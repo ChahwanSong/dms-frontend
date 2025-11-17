@@ -49,6 +49,7 @@ async def init_services(
             raise
         else:
             logger.info("Successfully connected to Redis for read/write operations")
+            await _redis_provider.start_key_expiration_listener()
     else:
         _redis_provider = None
 
