@@ -6,13 +6,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from pydantic import BaseModel, Field
 
 from task_state import TaskRecord, TaskStatus
 from task_state.redis import RedisRepositoryProvider, RedisRepositorySettings
+from task_state.timezone import now
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class WorkloadResult(BaseModel):
     """Simplified result payload published by the worker."""
 
-    finished_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime = Field(default_factory=now)
     duration_seconds: float
     detail: str
 

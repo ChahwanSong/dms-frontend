@@ -9,6 +9,7 @@ from typing import Optional
 from redis.asyncio import Redis
 
 from .repository import RedisTaskRepository
+from .timezone import DEFAULT_TIMEZONE_NAME, _coerce_timezone, set_default_timezone
 
 
 @dataclass(slots=True)
@@ -19,6 +20,7 @@ class RedisRepositorySettings:
     read_url: str
     ttl_seconds: int
     decode_responses: bool = True
+    timezone_name: str = DEFAULT_TIMEZONE_NAME
 
     @classmethod
     def from_env(
@@ -27,6 +29,7 @@ class RedisRepositorySettings:
         ttl_seconds: Optional[int] = None,
         write_env: str = "DMS_REDIS_WRITE_URL",
         read_env: str = "DMS_REDIS_READ_URL",
+        timezone_env: str = "DMS_TIMEZONE",
     ) -> "RedisRepositorySettings":
         """Load configuration from environment variables.
 
@@ -40,7 +43,14 @@ class RedisRepositorySettings:
         if ttl_seconds is None:
             ttl_env = os.getenv("DMS_REDIS_TASK_TTL_SECONDS")
             ttl_seconds = int(ttl_env) if ttl_env else 90 * 24 * 60 * 60
-        return cls(write_url=write_url, read_url=read_url, ttl_seconds=int(ttl_seconds))
+        timezone_name = os.getenv(timezone_env, DEFAULT_TIMEZONE_NAME)
+        _coerce_timezone(timezone_name)
+        return cls(
+            write_url=write_url,
+            read_url=read_url,
+            ttl_seconds=int(ttl_seconds),
+            timezone_name=timezone_name,
+        )
 
 
 class RedisRepositoryProvider:
@@ -64,6 +74,7 @@ class RedisRepositoryProvider:
         """Create (or return) the Redis-backed repository."""
 
         if self._repository is None:
+            set_default_timezone(self._settings.timezone_name)
             writer = Redis.from_url(
                 self._settings.write_url, decode_responses=self._settings.decode_responses
             )
@@ -80,7 +91,10 @@ class RedisRepositoryProvider:
             self._writer = writer
             self._reader = reader
             self._repository = RedisTaskRepository(
-                reader=reader, writer=writer, ttl_seconds=self._settings.ttl_seconds
+                reader=reader,
+                writer=writer,
+                ttl_seconds=self._settings.ttl_seconds,
+                tzinfo=_coerce_timezone(self._settings.timezone_name),
             )
         return self._repository
 

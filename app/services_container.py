@@ -10,6 +10,7 @@ from app.services.repository import TaskRepository
 from app.services.scheduler import SchedulerClient
 from app.services.tasks import TaskService
 from task_state.redis import RedisRepositoryProvider, RedisRepositorySettings
+from task_state.timezone import set_default_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ async def init_services(
     global _settings, _task_service, _event_processor, _scheduler_client, _redis_provider
 
     _settings = settings or get_settings()
+    set_default_timezone(_settings.timezone)
     configure_logging(_settings)
 
     if repository is None:
@@ -36,6 +38,7 @@ async def init_services(
                 write_url=_settings.redis_write_url,
                 read_url=_settings.redis_read_url,
                 ttl_seconds=_settings.redis_task_ttl_seconds,
+                timezone_name=_settings.timezone,
             )
         )
         try:

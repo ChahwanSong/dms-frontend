@@ -53,7 +53,7 @@ Deleting a task removes the primary key and prunes its ID from all three index s
 
 ### Status and log updates
 
-`set_status` and `append_log` load the `TaskRecord`, mutate its status or log list, update the `updated_at` timestamp, and call `save` to persist the changes. Because `save` rewrites the primary store and refreshes the index memberships, the indexes stay in sync automatically.
+`set_status` and `append_log` load the `TaskRecord`, mutate its status or log list, update the `updated_at` timestamp, and call `save` to persist the changes. Log entries are recorded with an ISO 8601 timestamp prefix based on the configured timezone (Asia/Seoul by default) in the form `<timestamp>,<message>` so readers can display when each event was written. Because `save` rewrites the primary store and refreshes the index memberships, the indexes stay in sync automatically.
 
 ## Query capabilities
 

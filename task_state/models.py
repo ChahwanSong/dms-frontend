@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field, field_serializer
+
+from .timezone import now
 
 
 class TaskStatus(str, enum.Enum):
@@ -29,8 +31,8 @@ class TaskRecord(BaseModel):
     user_id: str
     status: TaskStatus
     parameters: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
     logs: List[str] = Field(default_factory=list)
 
     @field_serializer("created_at", "updated_at")

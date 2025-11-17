@@ -25,6 +25,7 @@ External projects can then import `task_state` directly without taking any inter
 | `DMS_REDIS_WRITE_URL` | required | Redis URL used for writes and (if no read URL is supplied) reads. |
 | `DMS_REDIS_READ_URL` | value of `DMS_REDIS_WRITE_URL` | Optional Redis URL used for read-only operations. |
 | `DMS_REDIS_TASK_TTL_SECONDS` | `7776000` (90 days) | TTL applied to task metadata and all Redis indexes. |
+| `DMS_TIMEZONE` | `Asia/Seoul` | Timezone applied to created/updated timestamps and encoded log prefixes. |
 
 You can override the defaults programmatically by instantiating `RedisRepositorySettings` directly.
 
@@ -52,6 +53,7 @@ await provider.close()
 ```
 
 The repository automatically refreshes key TTLs and updates the service/user indexes described in `docs/services/repository.md`.
+Each log entry is prefixed with an ISO 8601 timestamp in the configured timezone in the form `<timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,worker started`). Use `task_state.repository.format_log_entry` if you need to mirror the log encoding elsewhere.
 
 ## Testing in downstream projects
 
