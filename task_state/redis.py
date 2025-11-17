@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -10,6 +12,8 @@ from redis.asyncio import Redis
 
 from .repository import RedisTaskRepository
 from .timezone import DEFAULT_TIMEZONE_NAME, _coerce_timezone, set_default_timezone
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -61,6 +65,7 @@ class RedisRepositoryProvider:
         self._reader: Optional[Redis] = None
         self._writer: Optional[Redis] = None
         self._repository: Optional[RedisTaskRepository] = None
+        self._expiration_listener: Optional[TaskExpirationSubscriber] = None
 
     @property
     def reader(self) -> Optional[Redis]:
@@ -98,9 +103,28 @@ class RedisRepositoryProvider:
             )
         return self._repository
 
+    async def start_key_expiration_listener(self) -> None:
+        """Start a background consumer for Redis key expiration events."""
+
+        if self._repository is None or self._reader is None:
+            await self.get_repository()
+        if self._repository is None or self._reader is None:
+            return
+        if self._expiration_listener is None:
+            self._expiration_listener = TaskExpirationSubscriber(
+                reader=self._reader, repository=self._repository
+            )
+        await self._expiration_listener.start()
+
+    async def stop_key_expiration_listener(self) -> None:
+        if self._expiration_listener:
+            await self._expiration_listener.stop()
+            self._expiration_listener = None
+
     async def close(self) -> None:
         """Close the Redis clients created by the provider."""
 
+        await self.stop_key_expiration_listener()
         if self._reader:
             await self._reader.aclose()
         if self._writer:
@@ -108,3 +132,60 @@ class RedisRepositoryProvider:
         self._reader = None
         self._writer = None
         self._repository = None
+
+
+class TaskExpirationSubscriber:
+    """Background task that reacts to Redis key expiration events."""
+
+    def __init__(self, *, reader: Redis, repository: RedisTaskRepository) -> None:
+        self._reader = reader
+        self._repository = repository
+        self._task: asyncio.Task[None] | None = None
+        self._stopped = asyncio.Event()
+        self._pubsub = None
+        self._db_index = self._reader.connection_pool.connection_kwargs.get("db", 0)
+
+    async def start(self) -> None:
+        if self._task is not None:
+            return
+        self._stopped.clear()
+        self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        self._stopped.set()
+        if self._pubsub:
+            await self._pubsub.aclose()
+        if self._task:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+        self._task = None
+        self._pubsub = None
+
+    async def _run(self) -> None:
+        channel = f"__keyevent@{self._db_index}__:expired"
+        try:
+            async with self._reader.pubsub() as pubsub:
+                self._pubsub = pubsub
+                await pubsub.psubscribe(channel)
+                while not self._stopped.is_set():
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=1.0
+                    )
+                    if not message:
+                        continue
+                    await self._handle_message(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to process Redis expiration notifications")
+
+    async def _handle_message(self, message: dict) -> None:
+        key = message.get("data")
+        if isinstance(key, bytes):
+            key = key.decode()
+        if not isinstance(key, str):
+            return
+        if not key.startswith("task:"):
+            return
+        task_id = key.removeprefix("task:")
+        await self._repository.handle_task_expired(task_id)

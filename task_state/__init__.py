@@ -2,7 +2,11 @@
 
 from .models import TaskRecord, TaskStatus
 from .repository import RedisTaskRepository, TaskRepository, format_log_entry
-from .redis import RedisRepositoryProvider, RedisRepositorySettings
+from .redis import (
+    RedisRepositoryProvider,
+    RedisRepositorySettings,
+    TaskExpirationSubscriber,
+)
 from .timezone import get_default_timezone, now, set_default_timezone
 
 __all__ = [
@@ -13,6 +17,7 @@ __all__ = [
     "format_log_entry",
     "RedisRepositorySettings",
     "RedisRepositoryProvider",
+    "TaskExpirationSubscriber",
     "get_default_timezone",
     "set_default_timezone",
     "now",
