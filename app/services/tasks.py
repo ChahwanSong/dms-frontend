@@ -47,6 +47,9 @@ class TaskService:
     async def list_service_tasks(self, service: str) -> list[TaskRecord]:
         return await self._repository.list_by_service(service)
 
+    async def list_service_users(self, service: str) -> list[str]:
+        return await self._repository.list_users_by_service(service)
+
     async def list_all_tasks(self) -> list[TaskRecord]:
         return await self._repository.list_all()
 

@@ -6,8 +6,10 @@ import typer
 import uvicorn
 
 from app.core.config import get_settings
+from .tasks import tasks_app
 
 cli = typer.Typer(help="Command line interface for the DMS frontend service")
+cli.add_typer(tasks_app, name="tasks")
 
 
 @cli.command()

@@ -29,6 +29,7 @@ async def test_save_applies_ttl_to_all_keys() -> None:
     expected_keys = {
         ("index:tasks", 1234),
         ("index:service:svc", 1234),
+        ("index:service:svc:users", 1234),
         ("index:service:svc:user:user", 1234),
     }
     assert expected_keys.issubset(expire_calls)
