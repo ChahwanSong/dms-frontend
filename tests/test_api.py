@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import AsyncIterator, Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -13,7 +13,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import get_settings
 from app.main import create_app
 from app.services.models import TaskRecord, TaskStatus
-from app.services.repository import TaskRepository
+from app.services.repository import TaskRepository, format_log_entry
+from task_state.timezone import now
 
 
 class StubSchedulerClient:
@@ -68,9 +69,9 @@ class _FakeRepository(TaskRepository):
         if not task:
             return None
         task.status = status
-        task.updated_at = datetime.now(timezone.utc)
+        task.updated_at = now()
         if log_entry:
-            task.logs.append(log_entry)
+            task.logs.append(format_log_entry(log_entry))
         await self.save(task)
         return task
 
@@ -78,7 +79,8 @@ class _FakeRepository(TaskRepository):
         task = await self.get(task_id)
         if not task:
             return None
-        task.logs.append(message)
+        task.logs.append(format_log_entry(message))
+        task.updated_at = now()
         await self.save(task)
         return task
 
@@ -153,6 +155,16 @@ async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
         return response.status_code == 200 and response.json()["task"]["status"] in {"running", "completed"}
 
     await wait_for_condition(_task_running)
+
+    status_response = await test_app.get(
+        f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}
+    )
+    assert status_response.status_code == 200
+    logs = status_response.json()["task"]["logs"]
+    assert logs
+    timestamp, message = logs[0].split(",", 1)
+    datetime.fromisoformat(timestamp)
+    assert message == "Dispatching to scheduler"
 
     list_response = await test_app.get("/api/v1/services/sync/users/alice/tasks")
     assert list_response.status_code == 200

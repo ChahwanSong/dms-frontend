@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.events import TaskCancellation, TaskSubmission
@@ -9,6 +8,7 @@ from app.core.events import TaskCancellation, TaskSubmission
 from .event_processor import TaskEventProcessor
 from .models import TaskCreateResult, TaskRecord, TaskStatus
 from .repository import TaskRepository
+from task_state.timezone import now
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,8 @@ class TaskService:
             user_id=user_id,
             status=TaskStatus.PENDING,
             parameters=parameters,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now(),
+            updated_at=now(),
         )
         await self._repository.save(record)
         await self._events.publish(TaskSubmission(payload={

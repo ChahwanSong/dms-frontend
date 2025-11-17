@@ -118,7 +118,7 @@ All paths are rooted at `/api/v1` by default.
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
 | DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs | `X-Operator-Token` header |
 
-Task status responses include the latest log entries alongside metadata, so a dedicated log-only endpoint is unnecessary. The `/help` response mirrors this table and is available at `/api/v1/help`.
+Task status responses include the latest log entries alongside metadata, so a dedicated log-only endpoint is unnecessary. Each log entry is timestamped using the configured timezone (Asia/Seoul by default) in the format `<iso-timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,Dispatching to scheduler`). Set `DMS_TIMEZONE=UTC` if you prefer UTC offsets instead. The `/help` response mirrors this table and is available at `/api/v1/help`.
 
 ## Usage examples
 Assuming the service is running locally on port 8000:
@@ -168,6 +168,7 @@ dms-frontend serve --host 0.0.0.0 --port 8000
 
 # Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
 dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"
+dms-frontend tasks status --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
 dms-frontend tasks users --service sync --api-base "${api_prefix}"
 dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --param input=value --param mode=fast
 dms-frontend tasks cancel --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice

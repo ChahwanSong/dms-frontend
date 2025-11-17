@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, ClassVar, Dict
+
+from task_state.timezone import now
 
 
 class EventType(str, enum.Enum):
@@ -15,7 +17,7 @@ class EventType(str, enum.Enum):
 class Event:
     type: ClassVar[EventType]
     payload: Dict[str, Any]
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=now)
 
 
 @dataclass(slots=True)

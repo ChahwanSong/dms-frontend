@@ -3,13 +3,25 @@
 from __future__ import annotations
 
 import abc
-from datetime import datetime, timezone
 import inspect
+from datetime import tzinfo
 from typing import Awaitable, Iterable, List, TypeVar, cast
 
 from redis.asyncio import Redis
 
 from .models import TaskRecord, TaskStatus
+from .timezone import get_default_timezone, now
+
+
+def format_log_entry(message: str, *, tzinfo: tzinfo | None = None) -> str:
+    """Return a timestamped log entry string.
+
+    Entries are encoded as ``"<iso-timestamp>,<message>"`` so consumers can
+    parse the timestamp without losing the original text payload.
+    """
+
+    timestamp = now(tzinfo).isoformat()
+    return f"{timestamp},{message}"
 
 
 class TaskRepository(abc.ABC):
@@ -57,12 +69,15 @@ _T = TypeVar("_T")
 class RedisTaskRepository(TaskRepository):
     """Task repository backed by Redis key value store."""
 
-    def __init__(self, reader: Redis, writer: Redis, *, ttl_seconds: int) -> None:
+    def __init__(
+        self, reader: Redis, writer: Redis, *, ttl_seconds: int, tzinfo=None
+    ) -> None:
         if ttl_seconds <= 0:
             raise ValueError("ttl_seconds must be a positive integer")
         self._reader = reader
         self._writer = writer
         self._ttl_seconds = int(ttl_seconds)
+        self._timezone = tzinfo or get_default_timezone()
 
     async def _execute(self, command: Awaitable[_T] | _T) -> _T:
         if inspect.isawaitable(command):
@@ -118,9 +133,9 @@ class RedisTaskRepository(TaskRepository):
         if not task:
             return None
         task.status = status
-        task.updated_at = datetime.now(timezone.utc)
+        task.updated_at = now(self._timezone)
         if log_entry:
-            task.logs.append(log_entry)
+            task.logs.append(format_log_entry(log_entry, tzinfo=self._timezone))
         await self.save(task)
         return task
 
@@ -128,8 +143,8 @@ class RedisTaskRepository(TaskRepository):
         task = await self.get(task_id)
         if not task:
             return None
-        task.logs.append(message)
-        task.updated_at = datetime.now(timezone.utc)
+        task.logs.append(format_log_entry(message, tzinfo=self._timezone))
+        task.updated_at = now(self._timezone)
         await self.save(task)
         return task
 

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     cli_default_port: int = 8000
     cli_reload: bool = False
 
+    # Example: set ``timezone="UTC"`` to record timestamps in UTC
+    timezone: str = "Asia/Seoul"
+
     def scheduler_url(self, endpoint: str) -> str:
         base = self.scheduler_base_url.rstrip("/")
         path = endpoint if endpoint.startswith("/") else f"/{endpoint}"

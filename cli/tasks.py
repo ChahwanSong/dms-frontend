@@ -51,6 +51,19 @@ def list_tasks(
     _echo_response(response)
 
 
+@tasks_app.command("status")
+def task_status(
+    service: str = typer.Option(..., "--service", help="Service name (e.g. sync)"),
+    task_id: str = typer.Option(..., "--task-id", help="Task identifier"),
+    user: str = typer.Option(..., "--user", help="User identifier"),
+    api_base: str = typer.Option(..., "--api-base", envvar="DMS_API_BASE", help="Base API URL (e.g. http://localhost:8000/api/v1"),
+) -> None:
+    """Fetch the status and logs for a user-scoped task."""
+    with _build_client(api_base) as client:
+        response = client.get(f"/services/{service}/tasks/{task_id}", params={"user_id": user})
+    _echo_response(response)
+
+
 @tasks_app.command("submit")
 def submit_task(
     service: str = typer.Option(..., "--service", help="Service name (e.g. sync)"),
