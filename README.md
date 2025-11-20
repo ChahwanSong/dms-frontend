@@ -89,7 +89,7 @@ Use `dms-frontend show-config` to print the effective configuration at runtime.
 
 ## Running the service
 ### Via the CLI
-The package exposes a `dms-frontend` console script:
+The package exposes a `dms-frontend` console script (install the project with `pip install -e .` to register it, or use `python -m cli.main` directly from the repo):
 ```bash
 dms-frontend serve --host 0.0.0.0 --port 8000
 ```
