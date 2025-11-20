@@ -88,17 +88,11 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 Use `dms-frontend show-config` to print the effective configuration at runtime.
 
 ## Running the service
-### Via the CLI
-The package exposes a `dms-frontend` console script (install the project with `pip install -e .` to register it, or use `python -m cli.main` directly from the repo):
-```bash
-dms-frontend serve --host 0.0.0.0 --port 8000
-```
-The command launches Uvicorn with settings pulled from the environment. Add `--reload` for local hot reloading. 
-
-### Directly with Uvicorn
+Start the API server directly with Uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+Add `--reload` for local hot reloading. The Typer CLI (`dms-frontend` entrypoint or `python -m cli.main`) remains available for helper commands such as inspecting configuration or task metadata.
 
 In Kubernetes deployments the JSON logger writes to stdout/stderr so that the platform can aggregate logs. 
 
@@ -166,8 +160,8 @@ curl -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token:
 # Operator cleanup of task metadata/logs
 curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
 
-# Start the service via the Typer CLI (honours env vars for host/port)
-dms-frontend serve --host 0.0.0.0 --port 8000
+# Start the service directly with Uvicorn
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
 dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"

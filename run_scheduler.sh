@@ -2,6 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "${SCRIPT_DIR}"
+
+export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+":${PYTHONPATH}"}"
 
 export DMS_SCHEDULER_URL="${DMS_SCHEDULER_URL:-http://127.0.0.1:9000}"
 
