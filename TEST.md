@@ -61,7 +61,7 @@ set -eux pipefail;\
     export DMS_REDIS_WRITE_URL="redis://127.0.0.1:6379";\
     export DMS_REDIS_READ_URL="redis://127.0.0.1:6379";\
     export DMS_SCHEDULER_BASE_URL="http://127.0.0.1:9000";\
-    dms-frontend serve --host 0.0.0.0 --port 8000
+    uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 
@@ -71,7 +71,9 @@ set -eux pipefail;\
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "${SCRIPT_DIR}"
 
+export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+":${PYTHONPATH}"}"
 export DMS_SCHEDULER_URL="${DMS_SCHEDULER_URL:-http://127.0.0.1:9000}"
 
 if [[ -z "${VIRTUAL_ENV:-}" && -f "${SCRIPT_DIR}/.venv/bin/activate" ]]; then
