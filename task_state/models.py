@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -23,6 +23,13 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TaskResult(BaseModel):
+    """Structured result payload attached to a task record."""
+
+    pod_status: Optional[str] = None
+    launcher_output: Optional[str] = None
+
+
 class TaskRecord(BaseModel):
     """Serializable representation of a task stored in Redis."""
 
@@ -34,6 +41,7 @@ class TaskRecord(BaseModel):
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
     logs: List[str] = Field(default_factory=list)
+    result: TaskResult = Field(default_factory=TaskResult)
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:

@@ -2,7 +2,7 @@
 
 This document explains how to consume the `task_state` package from other projects so they can publish task lifecycle updates to the same Redis datastore as the DMS frontend. The package bundles:
 
-- Pydantic models (`TaskRecord`, `TaskStatus`) that encode task metadata.
+- Pydantic models (`TaskRecord`, `TaskStatus`, `TaskResult`) that encode task metadata.
 - A Redis-backed repository (`RedisTaskRepository`) that enforces consistent key/index management.
 - A connection helper (`RedisRepositoryProvider`) that handles client setup and teardown.
 
@@ -47,6 +47,11 @@ await repository.save(
 # Push status updates and logs
 await repository.set_status("external-1", TaskStatus.RUNNING, log_entry="worker started")
 await repository.append_log("external-1", "processed input payload")
+await repository.update_result(
+    "external-1",
+    pod_status="phase=Running",  # stringified pod status snapshot
+    launcher_output="streamed stdout/stderr",
+)
 await repository.set_status("external-1", TaskStatus.COMPLETED, log_entry="worker finished")
 
 await provider.close()
@@ -54,6 +59,10 @@ await provider.close()
 
 The repository automatically refreshes key TTLs and updates the service/user indexes described in `docs/services/repository.md`.
 Each log entry is prefixed with an ISO 8601 timestamp in the configured timezone in the form `<timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,worker started`). Use `task_state.repository.format_log_entry` if you need to mirror the log encoding elsewhere.
+
+### Result payloads
+
+`TaskRecord.result` holds optional structured outputs from the workload. It is intended for Kubernetes pod status snapshots (stored as strings, such as JSON-encoded pod status) and combined launcher output (stdout and stderr coalesced into a single string). `update_result` is additive: only fields passed to the method are overwritten, making it safe for multiple processes to add pod state or output independently.
 
 ## Testing in downstream projects
 

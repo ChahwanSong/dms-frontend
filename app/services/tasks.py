@@ -106,3 +106,16 @@ class TaskService:
 
     async def update_status(self, task_id: str, status: TaskStatus, *, log_entry: str | None = None) -> TaskRecord | None:
         return await self._repository.set_status(task_id, status, log_entry=log_entry)
+
+    async def update_result(
+        self,
+        task_id: str,
+        *,
+        pod_status: str | None = None,
+        launcher_output: str | None = None,
+    ) -> TaskRecord | None:
+        return await self._repository.update_result(
+            task_id,
+            pod_status=pod_status,
+            launcher_output=launcher_output,
+        )

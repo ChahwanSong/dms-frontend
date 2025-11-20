@@ -84,6 +84,31 @@ class _FakeRepository(TaskRepository):
         await self.save(task)
         return task
 
+    async def update_result(
+        self,
+        task_id: str,
+        *,
+        pod_status: str | None = None,
+        launcher_output: str | None = None,
+    ) -> TaskRecord | None:
+        task = await self.get(task_id)
+        if not task:
+            return None
+        updated = task.result.model_copy()
+        changed = False
+        if pod_status is not None:
+            updated.pod_status = pod_status
+            changed = True
+        if launcher_output is not None:
+            updated.launcher_output = launcher_output
+            changed = True
+        if not changed:
+            return task
+        task.result = updated
+        task.updated_at = now()
+        await self.save(task)
+        return task
+
     async def list_by_ids(self, ids: Iterable[str]) -> list[TaskRecord]:
         return [self._store[task_id] for task_id in ids if task_id in self._store]
 

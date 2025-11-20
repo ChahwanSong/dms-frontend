@@ -6,6 +6,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from typing import AsyncIterator
 
 from pydantic import BaseModel, Field
@@ -48,6 +49,11 @@ class TaskStatusPublisher:
     async def publish_completion(self, task_id: str, result: WorkloadResult) -> None:
         repository = await self.provider.get_repository()
         logger.info("Marking task %s as COMPLETED", task_id)
+        await repository.update_result(
+            task_id,
+            pod_status=result.model_dump_json(),
+            launcher_output=result.detail,
+        )
         await repository.append_log(task_id, f"Result: {result.model_dump_json()}")
         await repository.set_status(task_id, TaskStatus.COMPLETED, log_entry="Worker finished")
 

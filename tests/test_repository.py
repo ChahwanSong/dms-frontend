@@ -68,3 +68,31 @@ async def test_handle_task_expired_cleans_indexes() -> None:
     writer.srem.assert_any_await("index:service:svc:user:user", "42")
     writer.delete.assert_awaited_with("task:42:metadata")
     writer.expire.assert_any_await("index:service:svc:users", 50)
+
+
+@pytest.mark.asyncio
+async def test_update_result_merges_fields() -> None:
+    reader = Mock()
+    writer = Mock()
+    writer.incr = AsyncMock(return_value=1)
+    writer.set = AsyncMock(return_value=True)
+    writer.sadd = AsyncMock(return_value=1)
+    writer.expire = AsyncMock(return_value=True)
+    writer.hset = AsyncMock(return_value=True)
+    reader.get = AsyncMock(return_value=None)
+
+    repository = RedisTaskRepository(reader=reader, writer=writer, ttl_seconds=999)
+    task = TaskRecord(task_id="1", service="svc", user_id="user", status=TaskStatus.PENDING)
+    await repository.save(task)
+
+    reader.get = AsyncMock(return_value=task.model_dump_json())
+
+    updated = await repository.update_result(
+        "1",
+        pod_status="Running",
+        launcher_output="stdout",
+    )
+
+    assert updated is not None
+    assert updated.result.pod_status == "Running"
+    assert updated.result.launcher_output == "stdout"
