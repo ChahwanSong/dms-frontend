@@ -3,7 +3,7 @@
 # master node (ion2410) 에서 실행
 
 
-kubectl run scheduler-test \
+kubectl run frontend-test \
   --rm -it \
   --restart=Never \
   --image=rts2411:5000/dms-dsync:latest \
@@ -14,7 +14,7 @@ kubectl run scheduler-test \
     "terminationGracePeriodSeconds": 3,
     "dnsPolicy": "ClusterFirstWithHostNet",
     "nodeSelector": {
-      "kubernetes.io/hostname": "ion2408"
+      "kubernetes.io/hostname": "ion2407"
     },
     "volumes": [
       {
@@ -27,7 +27,7 @@ kubectl run scheduler-test \
     ],
     "containers": [
       {
-        "name": "scheduler-test",
+        "name": "frontend-test",
         "image": "rts2411:5000/dms-dsync:latest",
         "stdin": true,
         "tty": true,
@@ -47,28 +47,18 @@ kubectl run scheduler-test \
   }
 }'
 
-kubectl expose pod scheduler-test \
-  --name=scheduler-test-svc \
-  --port=9000 \
-  --target-port=9000 \
+kubectl expose pod frontend-test \
+  --name=frontend-test-svc \
+  --port=8000 \
+  --target-port=8000 \
   --type=ClusterIP
 
 pip install -e .[dev] --no-build-isolation
 
-set -euo pipefail
-
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-
-export DMS_SCHEDULER_URL="${DMS_SCHEDULER_URL:-http://0.0.0.0:9000}"
-
-if [[ -z "${VIRTUAL_ENV:-}" && -f "${SCRIPT_DIR}/.venv/bin/activate" ]]; then
-  # shellcheck disable=SC1091
-  source "${SCRIPT_DIR}/.venv/bin/activate"
-fi
-
-echo "Starting local scheduler stub on ${DMS_SCHEDULER_URL}" >&2
-exec python3 -m uvicorn "cli.local_scheduler:app" --host 0.0.0.0 --port 9000
+set -eux pipefail;\
+    export DMS_SCHEDULER_BASE_URL="http://0.0.0.0:9000";\
+    cd /dms/dms-frontend; python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 
 
-# <service-name>.<namespace>.svc.cluster.local
+

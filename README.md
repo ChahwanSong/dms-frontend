@@ -184,4 +184,29 @@ Automated tests rely on stubbed Redis providers and a stub scheduler. To run the
 ```bash
 pytest
 ```
-The suite exercises task submission, cancellation, and operator authentication flows defined in `tests/test_api.py`. 
+The suite exercises task submission, cancellation, and operator authentication flows defined in `tests/test_api.py`.
+
+### CLI usage
+
+The `dms-frontend` Typer CLI is installed with the project and provides shortcuts for inspecting and interacting with the API.
+
+1. Ensure dependencies are installed (e.g., `pip install -e .[dev] --no-build-isolation`).
+2. Set the API base URL (defaults to `http://127.0.0.1:8000/api/v1`):
+   ```bash
+   export DMS_API_BASE="http://localhost:8000/api/v1"
+   ```
+3. Run commands such as:
+   ```bash
+   # List users who submitted tasks
+   dms-frontend tasks users --service sync
+
+   # Submit a task with custom parameters
+   dms-frontend tasks submit --service sync --user alice --param input=value --param mode=fast
+
+   # Check task status
+   dms-frontend tasks status --service sync --task-id "<task-id>" --user alice
+
+   # Cancel or delete a task
+   dms-frontend tasks cancel --service sync --task-id "<task-id>" --user alice
+   dms-frontend tasks delete --service sync --task-id "<task-id>" --user alice
+   ```
