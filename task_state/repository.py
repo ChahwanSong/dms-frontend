@@ -9,7 +9,7 @@ from typing import Awaitable, Iterable, List, TypeVar, cast
 
 from redis.asyncio import Redis
 
-from .models import TaskRecord, TaskStatus
+from .models import TaskRecord, TaskResult, TaskStatus
 from .timezone import get_default_timezone, now
 
 
@@ -46,6 +46,15 @@ class TaskRepository(abc.ABC):
 
     @abc.abstractmethod
     async def append_log(self, task_id: str, message: str) -> TaskRecord | None: ...
+
+    @abc.abstractmethod
+    async def update_result(
+        self,
+        task_id: str,
+        *,
+        pod_status: str | None = None,
+        launcher_output: str | None = None,
+    ) -> TaskRecord | None: ...
 
     @abc.abstractmethod
     async def list_by_ids(self, ids: Iterable[str]) -> List[TaskRecord]: ...
@@ -144,6 +153,36 @@ class RedisTaskRepository(TaskRepository):
         if not task:
             return None
         task.logs.append(format_log_entry(message, tzinfo=self._timezone))
+        task.updated_at = now(self._timezone)
+        await self.save(task)
+        return task
+
+    async def update_result(
+        self,
+        task_id: str,
+        *,
+        pod_status: str | None = None,
+        launcher_output: str | None = None,
+    ) -> TaskRecord | None:
+        task = await self.get(task_id)
+        if not task:
+            return None
+
+        result = task.result or TaskResult()
+        updated = result.model_copy()
+        changed = False
+
+        if pod_status is not None:
+            updated.pod_status = pod_status
+            changed = True
+        if launcher_output is not None:
+            updated.launcher_output = launcher_output
+            changed = True
+
+        if not changed:
+            return task
+
+        task.result = updated
         task.updated_at = now(self._timezone)
         await self.save(task)
         return task

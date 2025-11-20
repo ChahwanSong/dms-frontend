@@ -118,7 +118,7 @@ All paths are rooted at `/api/v1` by default.
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
 | DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs | `X-Operator-Token` header |
 
-Task status responses include the latest log entries alongside metadata, so a dedicated log-only endpoint is unnecessary. Each log entry is timestamped using the configured timezone (Asia/Seoul by default) in the format `<iso-timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,Dispatching to scheduler`). Set `DMS_TIMEZONE=UTC` if you prefer UTC offsets instead. The `/help` response mirrors this table and is available at `/api/v1/help`.
+Task status responses include the latest log entries alongside metadata and a `result` object that can store Kubernetes pod status snapshots as strings plus the launcher job's combined stdout/stderr output. Each log entry is timestamped using the configured timezone (Asia/Seoul by default) in the format `<iso-timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,Dispatching to scheduler`). Set `DMS_TIMEZONE=UTC` if you prefer UTC offsets instead. The `/help` response mirrors this table and is available at `/api/v1/help`.
 
 ## Usage examples
 Assuming the service is running locally on port 8000:
@@ -139,6 +139,9 @@ curl -X POST "${api_prefix}/services/sync/users/alice/tasks" \
 # Fetch task status scoped to the user
 task_id="<task-id>"
 curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+
+# Results (e.g. pod status, combined launcher stdout/stderr output) are returned in the `result` field
+curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
 
 # List users who submitted sync tasks
 curl "${api_prefix}/services/sync/users"
