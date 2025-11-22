@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Example worker that publishes task state updates via Redis"
 requires-python = ">=3.11"
 dependencies = [
-    "redis>=5.0",
+    "redis>=7.0",
     "pydantic>=2.6",
 ]
 
