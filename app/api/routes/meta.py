@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.services.models import HelpResponse
+from app.services.models import HealthResponse, HelpResponse
 
 router = APIRouter(tags=["meta"])
 
@@ -24,3 +24,8 @@ async def help_endpoint() -> HelpResponse:
             "DELETE /api/v1/admin/tasks/{task_id}",
         ],
     )
+
+
+@router.get("/healthz", response_model=HealthResponse)
+async def health_endpoint() -> HealthResponse:
+    return HealthResponse(status="ok")
