@@ -5,6 +5,7 @@ requests, persists metadata in Redis, forwards work to the `dms_scheduler`, and 
 users and operators.
 
 ## Table of contents
+
 - [Architecture overview](#architecture-overview)
 - [Repository layout](#repository-layout)
 - [Prerequisites](#prerequisites)
@@ -16,28 +17,31 @@ users and operators.
 - [Testing](#testing)
 
 ## Architecture overview
+
 The service is event driven and composed of the following layers:
 
 - **FastAPI application** (`app/main.py`) mounts three routers: user-facing routes, operator-only routes guarded by an
-  `X-Operator-Token` header, and a help endpoint. 
+  `X-Operator-Token` header, and a help endpoint.
 - **Task service** (`app/services/tasks.py`) centralises business logic for creating, listing, cancelling, and cleaning up tasks
-  while enforcing service/user scoping rules. 
+  while enforcing service/user scoping rules.
 - **Task repository** (`task_state/repository.py` exposed via `app/services/repository.py`) abstracts persistence with a
   Redis-backed implementation.
 - **Event processor** (`app/services/event_processor.py`) handles asynchronous fan-out to the scheduler using a configurable
-  pool of worker coroutines. 
+  pool of worker coroutines.
 - **Scheduler client** (`app/services/scheduler.py`) issues HTTP calls to the `dms_scheduler` `/task` and `/cancel` endpoints
-  using URLs from configuration. 
+  using URLs from configuration.
 - **Service container** (`app/services_container.py`) wires the above components together, manages Redis connections, and
-  configures logging suitable for Kubernetes (JSON structured output via `app/core/logging.py`). 
+  configures logging suitable for Kubernetes (JSON structured output via `app/core/logging.py`).
 
 ### Request lifecycle
-1. A REST call hits the FastAPI router and is validated by the relevant Pydantic response models. 
-2. The `TaskService` persists/updates task records through the repository and publishes an event to the background processor. 
-3. Worker coroutines in the `TaskEventProcessor` dequeue events, call the scheduler client, and update status/log entries. 
-4. Task state is queryable via Redis-backed repository methods, ensuring horizontally scalable reads in the Kubernetes cluster. 
+
+1. A REST call hits the FastAPI router and is validated by the relevant Pydantic response models.
+2. The `TaskService` persists/updates task records through the repository and publishes an event to the background processor.
+3. Worker coroutines in the `TaskEventProcessor` dequeue events, call the scheduler client, and update status/log entries.
+4. Task state is queryable via Redis-backed repository methods, ensuring horizontally scalable reads in the Kubernetes cluster.
 
 ## Repository layout
+
 ```
 app/
   api/                # FastAPI routers, dependencies, and security utilities
@@ -54,18 +58,23 @@ tests/
 ```
 
 ## Prerequisites
+
 - Python 3.11+
 - Redis cluster (write: `haproxy-redis.dms-redis.svc.cluster.local:6379`, read: `haproxy-redis.dms-redis.svc.cluster.local:6380`)
 - Access to the `dms_scheduler` service inside the Kubernetes cluster
 
 ## Installation
+
 1. Clone the repository and create a virtual environment.
 2. Install the service together with development extras:
+
    ```bash
    pip install -e .[dev]
    ```
+
 ## Configuration
-All configuration comes from environment variables with the `DMS_` prefix, provided by `app/core/config.py`. 
+
+All configuration comes from environment variables with the `DMS_` prefix, provided by `app/core/config.py`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -88,15 +97,19 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 Use `dms-frontend show-config` to print the effective configuration at runtime.
 
 ## Running the service
+
 Start the API server directly with Uvicorn:
+
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
 Add `--reload` for local hot reloading. The Typer CLI (`dms-frontend` entrypoint or `python -m cli.main`) remains available for helper commands such as inspecting configuration or task metadata.
 
-In Kubernetes deployments the JSON logger writes to stdout/stderr so that the platform can aggregate logs. 
+In Kubernetes deployments the JSON logger writes to stdout/stderr so that the platform can aggregate logs.
 
 ## API reference
+
 All paths are rooted at `/api/v1` by default.
 
 | Method | Path | Description | Auth |
@@ -115,6 +128,7 @@ All paths are rooted at `/api/v1` by default.
 Task status responses include the latest log entries alongside metadata and a `result` object that can store Kubernetes pod status snapshots as strings plus the launcher job's combined stdout/stderr output. Each log entry is timestamped using the configured timezone (Asia/Seoul by default) in the format `<iso-timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,Dispatching to scheduler`). Set `DMS_TIMEZONE=UTC` if you prefer UTC offsets instead. The `/help` response mirrors this table and is available at `/api/v1/help`.
 
 ## Usage examples
+
 Assuming the service is running locally on port 8000:
 
 ```bash
@@ -127,8 +141,8 @@ curl -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
 # Submit a task with multiple query params (becomes task inputs)
 curl -X POST "${api_prefix}/services/sync/users/alice/tasks" \
   --data "" --get \
-  --data-urlencode "input=value" \
-  --data-urlencode "mode=fast"
+  --data-urlencode "src=/home/gpu1" \
+  --data-urlencode "dst=/home/cpu1"
 
 # Fetch task status scoped to the user
 task_id="<task-id>"
@@ -180,10 +194,13 @@ publishes lifecycle events, and appends execution logs using the shared reposito
 mode alongside the main service to experiment with multi-project integrations.
 
 ## Testing
+
 Automated tests rely on stubbed Redis providers and a stub scheduler. To run them:
+
 ```bash
 pytest
 ```
+
 The suite exercises task submission, cancellation, and operator authentication flows defined in `tests/test_api.py`.
 
 ### CLI usage
@@ -192,10 +209,13 @@ The `dms-frontend` Typer CLI is installed with the project and provides shortcut
 
 1. Ensure dependencies are installed (e.g., `pip install -e .[dev] --no-build-isolation`).
 2. Set the API base URL (defaults to `http://127.0.0.1:8000/api/v1`):
+
    ```bash
    export DMS_API_BASE="http://localhost:8000/api/v1"
    ```
+
 3. Run commands such as:
+
    ```bash
    # List users who submitted tasks
    dms-frontend tasks users --service sync

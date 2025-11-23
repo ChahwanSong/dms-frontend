@@ -46,6 +46,7 @@ def create_app() -> FastAPI:
 
     @app.post("/task")
     async def submit_task(payload: Dict[str, Any]) -> JSONResponse:
+        print(f"task: {payload}")
         task_id = str(
             payload.get("task_id")
             or payload.get("id")
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
 
     @app.post("/cancel")
     async def cancel_task(payload: Dict[str, Any]) -> JSONResponse:
+        print(f"cancel: {payload}")
         task_id = payload.get("task_id")
         if not task_id:
             raise HTTPException(status_code=400, detail="task_id is required")
