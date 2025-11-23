@@ -27,3 +27,7 @@ class TaskUserListResponse(BaseModel):
 class HelpResponse(BaseModel):
     endpoints: Iterable[str]
     description: Optional[str] = None
+
+
+class HealthResponse(BaseModel):
+    status: str

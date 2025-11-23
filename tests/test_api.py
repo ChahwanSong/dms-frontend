@@ -173,6 +173,13 @@ async def wait_for_condition(condition, timeout: float = 1.0) -> None:
 
 
 @pytest.mark.asyncio
+async def test_healthcheck_endpoint(test_app: AsyncClient) -> None:
+    response = await test_app.get("/api/v1/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
 async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
     create_response = await test_app.post("/api/v1/services/sync/users/alice/tasks", params={"input": "value"})
     assert create_response.status_code == 202
