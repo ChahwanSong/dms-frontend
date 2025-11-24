@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from .repository import RedisTaskRepository
 from .timezone import DEFAULT_TIMEZONE_NAME, _coerce_timezone, set_default_timezone
@@ -163,21 +164,44 @@ class TaskExpirationSubscriber:
 
     async def _run(self) -> None:
         channel = f"__keyevent@{self._db_index}__:expired"
-        try:
-            async with self._reader.pubsub() as pubsub:
-                self._pubsub = pubsub
-                await pubsub.psubscribe(channel)
-                while not self._stopped.is_set():
-                    message = await pubsub.get_message(
-                        ignore_subscribe_messages=True, timeout=1.0
-                    )
-                    if not message:
-                        continue
-                    await self._handle_message(message)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Failed to process Redis expiration notifications")
+        while not self._stopped.is_set():
+            try:
+                async with self._reader.pubsub() as pubsub:
+                    self._pubsub = pubsub
+                    await pubsub.psubscribe(channel)
+                    logger.info("Subscribed to Redis expiration events on %s", channel)
+
+                    while not self._stopped.is_set():
+                        message = await pubsub.get_message(
+                            ignore_subscribe_messages=True,
+                            timeout=1.0,
+                        )
+                        if not message:
+                            continue
+                        await self._handle_message(message)
+
+            except asyncio.CancelledError:
+                # 종료 시에는 그대로 빠져나감
+                raise
+
+            except RedisConnectionError as exc:
+                if self._stopped.is_set():
+                    # 이미 stop 요청이 들어간 상태라면 그냥 조용히 종료
+                    break
+
+                logger.warning(
+                    "Redis connection closed while listening for expirations: %s. "
+                    "Will retry in 5 seconds.",
+                    exc,
+                )
+                await asyncio.sleep(5)
+
+            except Exception:
+                logger.exception("Failed to process Redis expiration notifications")
+                # 너무 시끄럽다면 여기서도 retry 하고 싶을 수 있음
+                await asyncio.sleep(5)
+
+        logger.info("TaskExpirationSubscriber stopped")
 
     async def _handle_message(self, message: dict) -> None:
         key = message.get("data")
