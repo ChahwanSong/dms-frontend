@@ -28,8 +28,8 @@ The service is event driven and composed of the following layers:
   Redis-backed implementation.
 - **Event processor** (`app/services/event_processor.py`) handles asynchronous fan-out to the scheduler using a configurable
   pool of worker coroutines.
-- **Scheduler client** (`app/services/scheduler.py`) issues HTTP calls to the `dms_scheduler` `/task` and `/cancel` endpoints
-  using URLs from configuration.
+- **Scheduler client** (`app/services/scheduler.py`) issues HTTP calls to the `dms_scheduler` `/tasks/task` and `/tasks/cancel`
+  endpoints using URLs from configuration.
 - **Service container** (`app/services_container.py`) wires the above components together, manages Redis connections, and
   configures logging suitable for Kubernetes (JSON structured output via `app/core/logging.py`).
 
@@ -84,8 +84,8 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_REDIS_READ_URL` | `redis://haproxy-redis.dms-redis.svc.cluster.local:6380/0` | Redis reader endpoint |
 | `DMS_REDIS_TASK_TTL_SECONDS` | `7776000` | Expiry (in seconds) applied to task metadata and indexes |
 | `DMS_SCHEDULER_BASE_URL` | `http://dms-scheduler` | Base URL for the downstream scheduler |
-| `DMS_SCHEDULER_TASK_ENDPOINT` | `/task` | Relative submission path |
-| `DMS_SCHEDULER_CANCEL_ENDPOINT` | `/cancel` | Relative cancellation path |
+| `DMS_SCHEDULER_TASK_ENDPOINT` | `/tasks/task` | Relative submission path |
+| `DMS_SCHEDULER_CANCEL_ENDPOINT` | `/tasks/cancel` | Relative cancellation path |
 | `DMS_OPERATOR_TOKEN` | `changeme` | Token required in the `X-Operator-Token` header |
 | `DMS_EVENT_WORKER_COUNT` | `4` | Number of background event workers |
 | `DMS_REQUEST_TIMEOUT_SECONDS` | `10.0` | Scheduler client request timeout |

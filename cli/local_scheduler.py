@@ -44,7 +44,7 @@ async def lifespan(_: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="DMS Scheduler Stub", version="0.1.0", lifespan=lifespan)
 
-    @app.post("/task")
+    @app.post("/tasks/task")
     async def submit_task(payload: Dict[str, Any]) -> JSONResponse:
         print(f"task: {payload}")
         task_id = str(
@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
         logger.info("Accepted task", extra={"task_id": task_id, "payload": payload})
         return JSONResponse({"status": "accepted", "task_id": task_id})
 
-    @app.post("/cancel")
+    @app.post("/tasks/cancel")
     async def cancel_task(payload: Dict[str, Any]) -> JSONResponse:
         print(f"cancel: {payload}")
         task_id = payload.get("task_id")
@@ -104,16 +104,16 @@ if __name__ == "__main__":
 
 
 """
-curl -X POST "http://127.0.0.1:9000/task" \
+curl -X POST "http://127.0.0.1:9000/tasks/task" \
     -H "Content-Type: application/json" \
     -d '{"task_id": "1", "service": "sync", "user_id": "alice", "parameters": {"input": "123456"}}' | jq
-  
 
-curl -X POST "http://127.0.0.1:9000/task" \
+
+curl -X POST "http://127.0.0.1:9000/tasks/task" \
     -H "Content-Type: application/json" \
     -d '{"service": "sync", "user_id": "alice", "parameters": {"input": "hello"}}' | jq
-  
-curl -X POST "http://127.0.0.1:9000/cancel" \
+
+curl -X POST "http://127.0.0.1:9000/tasks/cancel" \
     -H "Content-Type: application/json" \
     -d '{"task_id": "1"}' | jq
 """

@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     redis_task_ttl_seconds: int = 90 * 24 * 60 * 60
 
     scheduler_base_url: str = "http://dms-scheduler"
-    scheduler_task_endpoint: str = "/task"
-    scheduler_cancel_endpoint: str = "/cancel"
+    scheduler_task_endpoint: str = "/tasks/task"
+    scheduler_cancel_endpoint: str = "/tasks/cancel"
 
     operator_token: str = "changeme"
 
