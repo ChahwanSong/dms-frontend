@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from task_state.models import PriorityLevel, TaskRecord, TaskStatus
 from task_state.redis import (
     RedisRepositoryProvider,
     RedisRepositorySettings,
@@ -115,3 +116,15 @@ async def test_provider_closes_clients_on_failure(monkeypatch: pytest.MonkeyPatc
 
     writer_mock.aclose.assert_awaited()
     reader_mock.aclose.assert_awaited()
+
+
+def test_task_record_defaults_to_low_priority() -> None:
+    record = TaskRecord(
+        task_id="123",
+        service="service",
+        user_id="user",
+        status=TaskStatus.PENDING,
+    )
+
+    assert record.priority is PriorityLevel.low
+    assert record.model_dump(mode="json")["priority"] == "low"
