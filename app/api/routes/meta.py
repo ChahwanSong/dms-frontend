@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.services.models import HealthResponse, HelpResponse
 
 router = APIRouter(tags=["meta"])
+health_router = APIRouter(tags=["meta"])
 
 
 @router.get("/help", response_model=HelpResponse)
@@ -26,6 +27,6 @@ async def help_endpoint() -> HelpResponse:
     )
 
 
-@router.get("/healthz", response_model=HealthResponse)
+@health_router.get("/healthz", response_model=HealthResponse)
 async def health_endpoint() -> HealthResponse:
     return HealthResponse(status="ok")
