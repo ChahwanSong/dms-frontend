@@ -174,7 +174,7 @@ async def wait_for_condition(condition, timeout: float = 1.0) -> None:
 
 @pytest.mark.asyncio
 async def test_healthcheck_endpoint(test_app: AsyncClient) -> None:
-    response = await test_app.get("/api/v1/healthz")
+    response = await test_app.get("/healthz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 

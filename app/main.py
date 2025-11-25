@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 
+    app.include_router(meta.health_router)
     app.include_router(meta.router, prefix=settings.api_prefix)
     app.include_router(user.router, prefix=settings.api_prefix)
     app.include_router(operator.router, prefix=settings.api_prefix)
