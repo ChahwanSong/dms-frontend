@@ -57,7 +57,7 @@ pip install -e .[dev] --no-build-isolation
 
 set -eux pipefail;\
     export DMS_SCHEDULER_BASE_URL="http://0.0.0.0:9000";\
-    cd /dms/dms-frontend; python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+    cd /dms/dms-frontend; python3 -m uvicorn app.main --host 0.0.0.0 --port 8000
 
 
 

@@ -23,7 +23,7 @@ def serve(
     port = port or settings.cli_default_port
     reload = settings.cli_reload if reload is None else reload
 
-    uvicorn.run("app.main:app", host=host, port=port, reload=reload)
+    uvicorn.run("app.main", host=host, port=port, reload=reload)
 
 
 @cli.command()

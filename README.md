@@ -101,7 +101,7 @@ Use `dms-frontend show-config` to print the effective configuration at runtime.
 Start the API server directly with Uvicorn:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main --host 0.0.0.0 --port 8000
 ```
 
 Add `--reload` for local hot reloading. The Typer CLI (`dms-frontend` entrypoint or `python -m cli.main`) remains available for helper commands such as inspecting configuration or task metadata.
@@ -175,7 +175,7 @@ curl -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token:
 curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
 
 # Start the service directly with Uvicorn
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main --host 0.0.0.0 --port 8000
 
 # Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
 dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"
