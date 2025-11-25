@@ -23,6 +23,11 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class PriorityLevel(str, enum.Enum):
+    high = "high"
+    low = "low"
+
+
 class TaskResult(BaseModel):
     """Structured result payload attached to a task record."""
 
@@ -42,6 +47,7 @@ class TaskRecord(BaseModel):
     updated_at: datetime = Field(default_factory=now)
     logs: List[str] = Field(default_factory=list)
     result: TaskResult = Field(default_factory=TaskResult)
+    priority: PriorityLevel = PriorityLevel.low
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:
