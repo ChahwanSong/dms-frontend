@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
     log_json: bool = False
+    access_log_excluded_paths: tuple[str, ...] = ("/healthz",)
 
     cli_default_host: str = "0.0.0.0"
     cli_default_port: int = 8000
