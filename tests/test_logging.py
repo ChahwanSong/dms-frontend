@@ -18,6 +18,18 @@ def _make_record(path: str, name: str = "uvicorn.access") -> logging.LogRecord:
     return record
 
 
+def _make_record_with_args(path: str, name: str = "uvicorn.access") -> logging.LogRecord:
+    return logging.LogRecord(
+        name=name,
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="%s - \"%s %s HTTP/%s\" %d",
+        args=("127.0.0.1", "GET", path, "1.1", 200),
+        exc_info=None,
+    )
+
+
 def test_access_filter_excludes_configured_prefixes() -> None:
     access_filter = AccessPathExclusionFilter(excluded_paths=("/healthz", "/metrics"))
 
@@ -30,6 +42,13 @@ def test_access_filter_allows_non_excluded_paths() -> None:
 
     assert access_filter.filter(_make_record("/api/v1/items")) is True
     assert access_filter.filter(_make_record("/healthz", name="custom.logger")) is True
+
+
+def test_access_filter_handles_logs_without_request_line() -> None:
+    access_filter = AccessPathExclusionFilter(excluded_paths=("/healthz",))
+
+    assert access_filter.filter(_make_record_with_args("/healthz")) is False
+    assert access_filter.filter(_make_record_with_args("/api/v1/items")) is True
 
 
 def test_configure_logging_applies_excluded_paths() -> None:

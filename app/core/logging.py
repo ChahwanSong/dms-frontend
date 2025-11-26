@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import Any, Dict
 
@@ -34,17 +35,44 @@ class AccessPathExclusionFilter(logging.Filter):
         self.match_prefix = match_prefix
 
     @staticmethod
-    def _extract_path(request_line: str) -> str | None:
+    def _extract_path_from_request_line(request_line: str) -> str | None:
         try:
             return request_line.split(" ", 2)[1]
         except IndexError:
             return None
 
+    @staticmethod
+    def _find_path(record: logging.LogRecord) -> str | None:
+        request_line = getattr(record, "request_line", "")
+        path = AccessPathExclusionFilter._extract_path_from_request_line(request_line)
+        if path:
+            return path
+
+        raw_path = getattr(record, "raw_path", None)
+        if isinstance(raw_path, bytes):
+            raw_path = raw_path.decode("ascii", errors="ignore")
+        if isinstance(raw_path, str):
+            return raw_path
+
+        if record.args:
+            for arg in record.args:
+                candidate = arg.decode("ascii", errors="ignore") if isinstance(arg, bytes) else arg
+                if isinstance(candidate, str) and candidate.startswith("/"):
+                    return candidate
+
+        message = record.getMessage()
+        if message:
+            match = re.search(r'"[A-Z]+ ([^ ]+)', message)
+            if match:
+                return match.group(1)
+
+        return None
+
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401 - documented in base
         if record.name != "uvicorn.access":
             return True
 
-        path = self._extract_path(getattr(record, "request_line", ""))
+        path = self._find_path(record)
         if path is None:
             return True
 
