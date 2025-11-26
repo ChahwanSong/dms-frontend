@@ -37,6 +37,9 @@ def test_configure_logging_applies_excluded_paths() -> None:
 
     root_logger = logging.getLogger()
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_handlers = list(uvicorn_access_logger.handlers)
+    custom_handler = logging.StreamHandler()
+    uvicorn_access_logger.addHandler(custom_handler)
     root_handlers = list(root_logger.handlers)
     root_level = root_logger.level
     uvicorn_filters = list(uvicorn_access_logger.filters)
@@ -58,8 +61,16 @@ def test_configure_logging_applies_excluded_paths() -> None:
             if isinstance(filter, AccessPathExclusionFilter)
         )
         assert access_filter.excluded_paths == ("/metrics", "/status")
+
+        handler_access_filter = next(
+            filter
+            for filter in custom_handler.filters
+            if isinstance(filter, AccessPathExclusionFilter)
+        )
+        assert handler_access_filter.excluded_paths == ("/metrics", "/status")
     finally:
         root_logger.handlers = root_handlers
         root_logger.setLevel(root_level)
         uvicorn_access_logger.filters = uvicorn_filters
         uvicorn_access_logger.setLevel(uvicorn_level)
+        uvicorn_access_logger.handlers = uvicorn_handlers
