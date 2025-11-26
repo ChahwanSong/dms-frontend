@@ -57,6 +57,17 @@ class AccessPathExclusionFilter(logging.Filter):
         return True
 
 
+def _attach_access_filter(filterer: logging.Filterer, access_filter: AccessPathExclusionFilter) -> None:
+    """Attach a single instance of ``access_filter`` to a logger or handler."""
+
+    filterer.filters = [
+        filter
+        for filter in filterer.filters
+        if not isinstance(filter, AccessPathExclusionFilter)
+    ]
+    filterer.addFilter(access_filter)
+
+
 def configure_logging(settings: Settings) -> None:
     """Configure application logging."""
 
@@ -74,7 +85,7 @@ def configure_logging(settings: Settings) -> None:
     access_filter = AccessPathExclusionFilter(
         excluded_paths=settings.access_log_excluded_paths
     )
-    handler.addFilter(access_filter)
+    _attach_access_filter(handler, access_filter)
     root_logger.addHandler(handler)
     root_logger.setLevel(settings.log_level)
 
@@ -83,10 +94,7 @@ def configure_logging(settings: Settings) -> None:
     logging.getLogger("uvicorn.error").setLevel(settings.log_level)
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_access_logger.setLevel(settings.log_level)
-    uvicorn_access_logger.filters = [
-        filter
-        for filter in uvicorn_access_logger.filters
-        if not isinstance(filter, AccessPathExclusionFilter)
-    ]
-    uvicorn_access_logger.addFilter(access_filter)
+    _attach_access_filter(uvicorn_access_logger, access_filter)
+    for access_handler in uvicorn_access_logger.handlers:
+        _attach_access_filter(access_handler, access_filter)
     logging.getLogger("httpx").setLevel(settings.log_level)
