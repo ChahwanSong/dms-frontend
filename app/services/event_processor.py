@@ -6,7 +6,7 @@ from app.core.events import Event, EventType
 
 from .models import TaskStatus
 from .repository import TaskRepository
-from .scheduler import SchedulerClient
+from .scheduler import SchedulerClient, SchedulerUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,16 @@ class TaskEventProcessor:
                 "parameters": parameters,
             })
             await self._repository.append_log(task_id, "Scheduler acknowledged submission")
+        except SchedulerUnavailableError as exc:  # pragma: no cover - network failure path
+            logger.error(
+                "Task submission failed - scheduler unavailable",
+                extra={"task_id": task_id, "scheduler_url": exc.url},
+            )
+            await self._repository.set_status(
+                task_id,
+                TaskStatus.FAILED,
+                log_entry=f"Scheduler unavailable at {exc.url}: {exc.original}",
+            )
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task submission failed", extra={"task_id": task_id})
             await self._repository.set_status(task_id, TaskStatus.FAILED, log_entry=str(exc))
@@ -93,6 +103,14 @@ class TaskEventProcessor:
                 "service": service,
                 "user_id": user_id,
             })
+        except SchedulerUnavailableError as exc:  # pragma: no cover - network failure path
+            logger.error(
+                "Task cancellation failed - scheduler unavailable",
+                extra={"task_id": task_id, "scheduler_url": exc.url},
+            )
+            await self._repository.append_log(
+                task_id, f"Scheduler unavailable at {exc.url}: {exc.original}"
+            )
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task cancellation failed", extra={"task_id": task_id})
             await self._repository.append_log(task_id, f"Cancellation error: {exc}")
