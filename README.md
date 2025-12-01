@@ -20,8 +20,8 @@ users and operators.
 
 The service is event driven and composed of the following layers:
 
-- **FastAPI application** (`app/main.py`) mounts three routers: user-facing routes, operator-only routes guarded by an
-  `X-Operator-Token` header, and a help endpoint.
+- **FastAPI application** (`app/main.py`) mounts three routers: user and operator routes guarded by an
+  `X-Operator-Token` header, a public health check, and a public help endpoint.
 - **Task service** (`app/services/tasks.py`) centralises business logic for creating, listing, cancelling, and cleaning up tasks
   while enforcing service/user scoping rules.
 - **Task repository** (`task_state/repository.py` exposed via `app/services/repository.py`) abstracts persistence with a
@@ -112,14 +112,18 @@ In Kubernetes deployments the JSON logger writes to stdout/stderr so that the pl
 
 All paths are rooted at `/api/v1` by default.
 
+All endpoints except `/help` and `/healthz` require the `X-Operator-Token` header; this applies to both user-facing and
+operator routes.
+
 | Method | Path | Description | Auth |
 | --- | --- | --- | --- |
 | GET | `/help` | API overview and endpoint listing | None |
-| GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | None |
-| POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | None |
-| GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | None |
-| POST | `/services/{service}/tasks/{task_id}/cancel?user_id=` | Request task cancellation | None |
-| DELETE | `/services/{service}/tasks/{task_id}?user_id=` | Delete task metadata and logs (user-scoped) | None |
+| GET | `/healthz` | Health probe | None |
+| GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | `X-Operator-Token` header |
+| POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | `X-Operator-Token` header |
+| GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | `X-Operator-Token` header |
+| POST | `/services/{service}/tasks/{task_id}/cancel?user_id=` | Request task cancellation | `X-Operator-Token` header |
+| DELETE | `/services/{service}/tasks/{task_id}?user_id=` | Delete task metadata and logs (user-scoped) | `X-Operator-Token` header |
 | GET | `/admin/tasks` | List all tasks across services | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks` | List tasks for a specific service | `X-Operator-Token` header |
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
@@ -134,38 +138,38 @@ Assuming the service is running locally on port 8000:
 ```bash
 # API prefix for convenience
 api_prefix="http://localhost:8000/api/v1"
+token="${DMS_OPERATOR_TOKEN:-$(printenv DMS_OPERATOR_TOKEN)}"
 
 # Submit a synchronous task for user "alice"
-curl -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
 
 # Submit a task with multiple query params (becomes task inputs)
-curl -X POST "${api_prefix}/services/sync/users/alice/tasks" \
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks" \
   --data "" --get \
   --data-urlencode "src=/home/gpu1" \
   --data-urlencode "dst=/home/cpu1"
 
 # Fetch task status scoped to the user
 task_id="<task-id>"
-curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Results (e.g. pod status, combined launcher stdout/stderr output) are returned in the `result` field
-curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
 
 # List users who submitted sync tasks
-curl "${api_prefix}/services/sync/users"
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
 
 # List user tasks
-curl "${api_prefix}/services/sync/users/alice/tasks"
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/alice/tasks"
 
 # Cancel a task
-curl -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=alice"
 
 # Delete task metadata and logs (user-scoped)
-curl -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Operator listing with token
-token="$(printenv DMS_OPERATOR_TOKEN)"
 curl "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
 
 # Operator cancellation of any task
@@ -178,12 +182,12 @@ curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${to
 uvicorn app.main --host 0.0.0.0 --port 8000
 
 # Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
-dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}"
-dms-frontend tasks status --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
-dms-frontend tasks users --service sync --api-base "${api_prefix}"
-dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --param input=value --param mode=fast
-dms-frontend tasks cancel --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
-dms-frontend tasks delete --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice
+dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}" --operator-token "${token}"
+dms-frontend tasks status --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
+dms-frontend tasks users --service sync --api-base "${api_prefix}" --operator-token "${token}"
+dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --operator-token "${token}" --param input=value --param mode=fast
+dms-frontend tasks cancel --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
+dms-frontend tasks delete --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
 ```
 
 ### External status publisher example
@@ -214,7 +218,13 @@ The `dms-frontend` Typer CLI is installed with the project and provides shortcut
    export DMS_API_BASE="http://localhost:8000/api/v1"
    ```
 
-3. Run commands such as:
+3. Provide the operator token (required for all API calls except `/help`):
+
+   ```bash
+   export DMS_OPERATOR_TOKEN="<your-token>"
+   ```
+
+4. Run commands such as:
 
    ```bash
    # List users who submitted tasks

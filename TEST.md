@@ -88,7 +88,8 @@ exec python3 -m uvicorn "cli.local_scheduler:app" --host 127.0.0.1 --port 9000
 
 ## 테스트용 curl
 
-일단, 쿠버네티스에 테스트 파드를 띄우고, 쿼리를 날린다.
+일단, 쿠버네티스에 테스트 파드를 띄우고, 쿼리를 날린다. `/help` 와 `/healthz` 를 제외한 모든 API 요청에는
+`X-Operator-Token` 헤더가 필요하다.
 
 ```shell
 kubectl exec -it frontend-test -- bash
@@ -97,37 +98,38 @@ kubectl exec -it frontend-test -- bash
 ### 쿼리 날리기
 ```shell
 api_prefix="http://localhost:8000/api/v1"
+token="${DMS_OPERATOR_TOKEN:-$(printenv DMS_OPERATOR_TOKEN)}"
 
 curl -X GET "${api_prefix}/help" | jq
+curl -X GET "${api_prefix}/healthz" | jq
 
 # submit a sync task with name "cocoa.song"
-curl -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks?input=123456"
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks?input=123456"
 
 # Submit a task with multiple query params (becomes task inputs)
-curl -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks" \
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks" \
   --data "" --get \
   --data-urlencode "src=/home/gpu1" \
   --data-urlencode "dst=/scratch"
 
 # Fetch task status scoped to the user
 task_id="1"
-curl "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song" | jq
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song" | jq
 
 # List users who submitted sync tasks
-curl "${api_prefix}/services/sync/users"
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
 
 # List user tasks
-curl "${api_prefix}/services/sync/users/cocoa.song/tasks"
+curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/cocoa.song/tasks"
 
 # Cancel a task
-curl -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
+curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=cocoa.song" | jq
 
 # Delete task metadata and logs (user-scoped)
-curl -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song"
+curl -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song"
 
 # Operator listing with token
-token="$(printenv DMS_OPERATOR_TOKEN)"
 curl "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
 
 # Operator cancellation of any task

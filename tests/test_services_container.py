@@ -57,7 +57,7 @@ def _reset_services_container(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _build_settings(**overrides: Any) -> Any:
-    defaults = {"operator_token": "secret", "log_json": False}
+    defaults = {"operator_token": "changeme", "log_json": False}
     defaults.update(overrides)
     return settings_from_overrides(**defaults)
 
