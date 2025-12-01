@@ -13,8 +13,9 @@ from app.services.models import (
 from app.services.tasks import TaskService
 
 from ..dependencies import get_task_service
+from ..security import require_operator_token
 
-router = APIRouter(tags=["user"], prefix="/services")
+router = APIRouter(tags=["user"], prefix="/services", dependencies=[Depends(require_operator_token)])
 
 
 @router.get("/{service}/users", response_model=TaskUserListResponse)

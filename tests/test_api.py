@@ -17,6 +17,9 @@ from app.services.repository import TaskRepository, format_log_entry
 from task_state.timezone import now
 
 
+AUTH_HEADERS = {"X-Operator-Token": "changeme"}
+
+
 class StubSchedulerClient:
     def __init__(self, settings: Any) -> None:
         self.submissions: list[dict] = []
@@ -144,7 +147,7 @@ class _FakeRedisProvider:
 
 @pytest.fixture
 async def test_app(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
-    monkeypatch.setenv("DMS_OPERATOR_TOKEN", "secret")
+    monkeypatch.setenv("DMS_OPERATOR_TOKEN", "changeme")
     monkeypatch.setenv("DMS_REDIS_WRITE_URL", "redis://write")
     monkeypatch.setenv("DMS_REDIS_READ_URL", "redis://read")
     get_settings.cache_clear()  # type: ignore[attr-defined]
@@ -173,26 +176,52 @@ async def wait_for_condition(condition, timeout: float = 1.0) -> None:
 
 
 @pytest.mark.asyncio
-async def test_healthcheck_endpoint(test_app: AsyncClient) -> None:
+async def test_healthcheck_endpoint_is_public(test_app: AsyncClient) -> None:
     response = await test_app.get("/healthz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+    response_with_token = await test_app.get("/healthz", headers=AUTH_HEADERS)
+    assert response_with_token.status_code == 200
+    assert response_with_token.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_help_endpoint_is_public(test_app: AsyncClient) -> None:
+    response = await test_app.get("/api/v1/help")
+    assert response.status_code == 200
+    assert "X-Operator-Token" in response.json()["description"]
+
+
+@pytest.mark.asyncio
+async def test_user_routes_require_token(test_app: AsyncClient) -> None:
+    response = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    assert response.status_code == 401
+
+    response = await test_app.post(
+        "/api/v1/services/sync/users/alice/tasks", params={"input": "value"}, headers=AUTH_HEADERS
+    )
+    assert response.status_code == 202
+
 
 @pytest.mark.asyncio
 async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
-    create_response = await test_app.post("/api/v1/services/sync/users/alice/tasks", params={"input": "value"})
+    create_response = await test_app.post(
+        "/api/v1/services/sync/users/alice/tasks", params={"input": "value"}, headers=AUTH_HEADERS
+    )
     assert create_response.status_code == 202
     task_id = create_response.json()["task_id"]
 
     async def _task_running() -> bool:
-        response = await test_app.get(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
+        response = await test_app.get(
+            f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}, headers=AUTH_HEADERS
+        )
         return response.status_code == 200 and response.json()["task"]["status"] in {"running", "completed"}
 
     await wait_for_condition(_task_running)
 
     status_response = await test_app.get(
-        f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}
+        f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}, headers=AUTH_HEADERS
     )
     assert status_response.status_code == 200
     logs = status_response.json()["task"]["logs"]
@@ -201,7 +230,7 @@ async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
     datetime.fromisoformat(timestamp)
     assert message == "Dispatching to scheduler"
 
-    list_response = await test_app.get("/api/v1/services/sync/users/alice/tasks")
+    list_response = await test_app.get("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
     assert list_response.status_code == 200
     tasks = list_response.json()["tasks"]
     assert len(tasks) == 1
@@ -213,21 +242,25 @@ async def test_operator_token_required(test_app: AsyncClient) -> None:
     response = await test_app.get("/api/v1/admin/tasks", headers={"X-Operator-Token": "wrong"})
     assert response.status_code == 401
 
-    response = await test_app.get("/api/v1/admin/tasks", headers={"X-Operator-Token": "secret"})
+    response = await test_app.get("/api/v1/admin/tasks", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
-    create_response = await test_app.post("/api/v1/services/scan/users/bob/tasks")
+    create_response = await test_app.post("/api/v1/services/scan/users/bob/tasks", headers=AUTH_HEADERS)
     task_id = create_response.json()["task_id"]
 
-    cancel_response = await test_app.post(f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"})
+    cancel_response = await test_app.post(
+        f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"}, headers=AUTH_HEADERS
+    )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["task"]["status"] == "cancel_requested"
 
     async def _task_cancelled() -> bool:
-        response = await test_app.get(f"/api/v1/services/scan/tasks/{task_id}", params={"user_id": "bob"})
+        response = await test_app.get(
+            f"/api/v1/services/scan/tasks/{task_id}", params={"user_id": "bob"}, headers=AUTH_HEADERS
+        )
         return response.status_code == 200 and response.json()["task"]["status"] == "cancelled"
 
     await wait_for_condition(_task_cancelled)
@@ -235,11 +268,11 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_service_user_listing(test_app: AsyncClient) -> None:
-    await test_app.post("/api/v1/services/sync/users/alice/tasks")
-    await test_app.post("/api/v1/services/sync/users/bob/tasks")
-    await test_app.post("/api/v1/services/scan/users/charlie/tasks")
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/scan/users/charlie/tasks", headers=AUTH_HEADERS)
 
-    response = await test_app.get("/api/v1/services/sync/users")
+    response = await test_app.get("/api/v1/services/sync/users", headers=AUTH_HEADERS)
     assert response.status_code == 200
     users = set(response.json()["users"])
     assert users == {"alice", "bob"}
