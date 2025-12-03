@@ -19,6 +19,25 @@ class SchedulerUnavailableError(RuntimeError):
         self.original = original
 
 
+class SchedulerResponseError(RuntimeError):
+    """Raised when the scheduler responds with a non-success status code."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        url: str,
+        status_code: int,
+        response_text: str,
+        original: Exception,
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.status_code = status_code
+        self.response_text = response_text
+        self.original = original
+
+
 class SchedulerClient:
     """Client responsible for communicating with the scheduler microservice."""
 
@@ -32,6 +51,20 @@ class SchedulerClient:
         try:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            response_text = exc.response.text
+            status_code = exc.response.status_code
+            logger.error(
+                "Scheduler responded with error",
+                extra={"url": url, "status_code": status_code, "response": response_text},
+            )
+            raise SchedulerResponseError(
+                f"Scheduler responded with {status_code}: {response_text}",
+                url=url,
+                status_code=status_code,
+                response_text=response_text,
+                original=exc,
+            ) from exc
         except httpx.RequestError as exc:
             logger.error(
                 "Scheduler unreachable", extra={"url": url, "error": str(exc)}
@@ -46,6 +79,20 @@ class SchedulerClient:
         try:
             response = await self._client.post(url, json=payload)
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            response_text = exc.response.text
+            status_code = exc.response.status_code
+            logger.error(
+                "Scheduler responded with error",
+                extra={"url": url, "status_code": status_code, "response": response_text},
+            )
+            raise SchedulerResponseError(
+                f"Scheduler responded with {status_code}: {response_text}",
+                url=url,
+                status_code=status_code,
+                response_text=response_text,
+                original=exc,
+            ) from exc
         except httpx.RequestError as exc:
             logger.error(
                 "Scheduler unreachable", extra={"url": url, "error": str(exc)}
