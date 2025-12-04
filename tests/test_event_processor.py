@@ -115,7 +115,7 @@ class _ErroringScheduler:
 
 
 @pytest.mark.asyncio
-async def test_scheduler_error_logged_and_surfaces_in_task_logs() -> None:
+async def test_scheduler_error_logged_without_state_change() -> None:
     repository = _FakeRepository()
     error_message = "{\"detail\":\"Invalid directory\"}"
     scheduler = _ErroringScheduler(response_text=error_message)
@@ -143,11 +143,9 @@ async def test_scheduler_error_logged_and_surfaces_in_task_logs() -> None:
 
     updated_task = await repository.get(task.task_id)
     assert updated_task is not None
-    assert updated_task.status is TaskStatus.FAILED
-    assert any(
-        "Scheduler error (400): {\"detail\":\"Invalid directory\"}" in log
-        for log in updated_task.logs
-    )
+    assert updated_task.status is TaskStatus.DISPATCHING
+    assert len(updated_task.logs) == 1
+    assert updated_task.logs[0].endswith(",Dispatching to scheduler")
     assert scheduler.payloads == [
         {
             "task_id": task.task_id,

@@ -101,11 +101,6 @@ class TaskEventProcessor:
                     "response": exc.response_text,
                 },
             )
-            await self._repository.set_status(
-                task_id,
-                TaskStatus.FAILED,
-                log_entry=f"Scheduler error ({exc.status_code}): {exc.response_text}",
-            )
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task submission failed", extra={"task_id": task_id})
             await self._repository.set_status(task_id, TaskStatus.FAILED, log_entry=str(exc))
@@ -131,9 +126,6 @@ class TaskEventProcessor:
                     "status_code": exc.status_code,
                     "response": exc.response_text,
                 },
-            )
-            await self._repository.append_log(
-                task_id, f"Scheduler cancellation error ({exc.status_code}): {exc.response_text}"
             )
         except SchedulerUnavailableError as exc:  # pragma: no cover - network failure path
             logger.error(
