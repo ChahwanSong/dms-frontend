@@ -71,17 +71,19 @@ class TaskService:
         if user_id and record.user_id != user_id:
             return None
 
-        if record.status in {TaskStatus.CANCELLED, TaskStatus.COMPLETED, TaskStatus.FAILED}:
+        if record.status in {
+            TaskStatus.CANCEL_REQUESTED,
+            TaskStatus.CANCELLED,
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+        }:
             return record
 
-        if record.status is not TaskStatus.CANCEL_REQUESTED:
-            record = await self._repository.set_status(
-                task_id,
-                TaskStatus.CANCEL_REQUESTED,
-                log_entry="Cancellation requested",
-            )
-            if not record:  # pragma: no cover - defensive, repository guarantees record exists
-                return None
+        record_with_log = await self._repository.append_log(
+            task_id, "Cancellation requested at frontend"
+        )
+        if record_with_log:
+            record = record_with_log
 
         await self._events.publish(
             TaskCancellation(
