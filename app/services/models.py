@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -30,4 +30,10 @@ class HelpResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: Literal["ok", "error"]
+    redis: "RedisHealth"
+
+
+class RedisHealth(BaseModel):
+    connected: bool
+    message: Optional[str] = None

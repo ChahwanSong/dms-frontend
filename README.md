@@ -118,7 +118,7 @@ operator routes.
 | Method | Path | Description | Auth |
 | --- | --- | --- | --- |
 | GET | `/help` | API overview and endpoint listing | None |
-| GET | `/healthz` | Health probe | None |
+| GET | `/healthz` | Health probe (includes Redis connectivity) | None |
 | GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | `X-Operator-Token` header |
 | POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | `X-Operator-Token` header |
 | GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | `X-Operator-Token` header |
