@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from starlette import status
+
 from app.core.events import Event, EventType
 
 from .models import TaskStatus
 from .repository import TaskRepository
-from .scheduler import SchedulerClient, SchedulerUnavailableError
+from .scheduler import (
+    SchedulerClient,
+    SchedulerResponseError,
+    SchedulerUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +93,23 @@ class TaskEventProcessor:
                 TaskStatus.FAILED,
                 log_entry=f"Scheduler unavailable at {exc.url}: {exc.original}",
             )
+        except SchedulerResponseError as exc:
+            log_fn = logger.critical if exc.status_code == status.HTTP_404_NOT_FOUND else logger.error
+            log_fn(
+                "Task submission failed - scheduler returned error",
+                extra={
+                    "task_id": task_id,
+                    "scheduler_url": exc.url,
+                    "status_code": exc.status_code,
+                    "response": exc.response_text,
+                },
+            )
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                await self._repository.set_status(
+                    task_id,
+                    TaskStatus.FAILED,
+                    log_entry=f"Scheduler returned {exc.status_code}: {exc.response_text}",
+                )
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task submission failed", extra={"task_id": task_id})
             await self._repository.set_status(task_id, TaskStatus.FAILED, log_entry=str(exc))
@@ -97,12 +120,31 @@ class TaskEventProcessor:
         task_id = event.payload["task_id"]
         service = event.payload["service"]
         user_id = event.payload.get("user_id")
+        failure_status: TaskStatus | None = None
+        failure_log: str | None = None
+        skip_status_update = False
         try:
             await self._scheduler.cancel_task({
                 "task_id": task_id,
                 "service": service,
                 "user_id": user_id,
             })
+        except SchedulerResponseError as exc:
+            log_fn = logger.critical if exc.status_code == status.HTTP_404_NOT_FOUND else logger.error
+            log_fn(
+                "Task cancellation failed - scheduler returned error",
+                extra={
+                    "task_id": task_id,
+                    "scheduler_url": exc.url,
+                    "status_code": exc.status_code,
+                    "response": exc.response_text,
+                },
+            )
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                failure_status = TaskStatus.FAILED
+                failure_log = f"Scheduler returned {exc.status_code}: {exc.response_text}"
+            elif exc.status_code == status.HTTP_404_NOT_FOUND:
+                skip_status_update = True
         except SchedulerUnavailableError as exc:  # pragma: no cover - network failure path
             logger.error(
                 "Task cancellation failed - scheduler unavailable",
@@ -114,5 +156,10 @@ class TaskEventProcessor:
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task cancellation failed", extra={"task_id": task_id})
             await self._repository.append_log(task_id, f"Cancellation error: {exc}")
-        finally:
+        if skip_status_update:
+            return
+
+        if failure_status is TaskStatus.FAILED:
+            await self._repository.set_status(task_id, failure_status, log_entry=failure_log)
+        else:
             await self._repository.set_status(task_id, TaskStatus.CANCELLED, log_entry="Task cancelled")
