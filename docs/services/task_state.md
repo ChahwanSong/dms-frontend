@@ -66,7 +66,7 @@ Each log entry is prefixed with an ISO 8601 timestamp in the configured timezone
 
 ### Job identifiers
 
-`TaskRecord.jobs` stores any job identifiers assigned by external schedulers. The list defaults to empty so callers can choose when to populate it (for example, after a scheduler returns the job ID on submission).
+`TaskRecord.active_jobs` stores any job identifiers assigned by external schedulers. The list defaults to empty so callers can choose when to populate it (for example, after a scheduler returns the job ID on submission).
 
 ## Testing in downstream projects
 

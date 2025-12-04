@@ -127,5 +127,5 @@ def test_task_record_defaults_to_low_priority() -> None:
     )
 
     assert record.priority is PriorityLevel.low
-    assert record.jobs == []
+    assert record.active_jobs == []
     assert record.model_dump(mode="json")["priority"] == "low"
