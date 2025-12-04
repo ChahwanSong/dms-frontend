@@ -89,3 +89,7 @@ def get_settings_instance() -> Settings:
     if not _settings:
         raise RuntimeError("Settings not initialised")
     return _settings
+
+
+def get_redis_provider_instance() -> Optional[RedisRepositoryProvider]:
+    return _redis_provider

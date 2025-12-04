@@ -130,10 +130,23 @@ class _FakeRepository(TaskRepository):
 
 
 class _FakeRedisProvider:
+    should_fail = False
+
+    class _FakeRedisClient:
+        def __init__(self, *, should_fail: bool = False) -> None:
+            self.should_fail = should_fail
+
+        async def ping(self) -> bool:
+            if self.should_fail:
+                raise RuntimeError("redis unavailable")
+            return True
+
     def __init__(self, settings: Any) -> None:
         self.settings = settings
         self.repository = _FakeRepository()
         self.closed = False
+        self.reader = self._FakeRedisClient(should_fail=self.should_fail)
+        self.writer = self._FakeRedisClient(should_fail=self.should_fail)
 
     async def get_repository(self) -> _FakeRepository:
         return self.repository
@@ -179,11 +192,36 @@ async def wait_for_condition(condition, timeout: float = 1.0) -> None:
 async def test_healthcheck_endpoint_is_public(test_app: AsyncClient) -> None:
     response = await test_app.get("/healthz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "redis": {"connected": True}}
 
     response_with_token = await test_app.get("/healthz", headers=AUTH_HEADERS)
     assert response_with_token.status_code == 200
-    assert response_with_token.json() == {"status": "ok"}
+    assert response_with_token.json() == {"status": "ok", "redis": {"connected": True}}
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_reports_redis_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DMS_OPERATOR_TOKEN", "changeme")
+    monkeypatch.setenv("DMS_REDIS_WRITE_URL", "redis://write")
+    monkeypatch.setenv("DMS_REDIS_READ_URL", "redis://read")
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+
+    from app import services_container
+
+    monkeypatch.setattr(services_container, "SchedulerClient", StubSchedulerClient)
+    monkeypatch.setattr(services_container, "RedisRepositoryProvider", _FakeRedisProvider)
+    monkeypatch.setattr(_FakeRedisProvider, "should_fail", True)
+
+    app = create_app()
+
+    async with LifespanManager(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "error"
+    assert response.json()["redis"] == {"connected": False, "message": "redis unavailable"}
 
 
 @pytest.mark.asyncio
