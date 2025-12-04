@@ -43,7 +43,7 @@ class TaskRecord(BaseModel):
     user_id: str
     status: TaskStatus
     parameters: Dict[str, Any] = Field(default_factory=dict)
-    jobs: List[str] = Field(default_factory=list)
+    active_jobs: List[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
     logs: List[str] = Field(default_factory=list)
