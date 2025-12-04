@@ -4,8 +4,9 @@ from collections import defaultdict
 from typing import Iterable
 
 import pytest
+from starlette import status
 
-from app.core.events import TaskSubmission
+from app.core.events import TaskCancellation, TaskSubmission
 from app.services.event_processor import TaskEventProcessor
 from app.services.repository import TaskRepository, format_log_entry
 from app.services.scheduler import SchedulerResponseError
@@ -96,6 +97,7 @@ class _ErroringScheduler:
         self.payloads: list[dict] = []
         self.status_code = status_code
         self.response_text = response_text or ""
+        self.raise_on_cancel = False
 
     async def submit_task(self, payload: dict) -> None:
         self.payloads.append(payload)
@@ -107,8 +109,16 @@ class _ErroringScheduler:
             original=RuntimeError("scheduler error"),
         )
 
-    async def cancel_task(self, payload: dict) -> None:  # pragma: no cover - unused
+    async def cancel_task(self, payload: dict) -> None:
         self.payloads.append(payload)
+        if self.raise_on_cancel:
+            raise SchedulerResponseError(
+                f"Scheduler responded with {self.status_code}: {self.response_text}",
+                url="http://scheduler",
+                status_code=self.status_code,
+                response_text=self.response_text,
+                original=RuntimeError("scheduler error"),
+            )
 
     async def aclose(self) -> None:  # pragma: no cover - unused
         return None
@@ -154,3 +164,74 @@ async def test_scheduler_error_logged_without_state_change() -> None:
             "parameters": task.parameters,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_error_403_marks_task_failed() -> None:
+    repository = _FakeRepository()
+    error_message = "{\"detail\":\"Unauthorized\"}"
+    scheduler = _ErroringScheduler(status_code=status.HTTP_403_FORBIDDEN, response_text=error_message)
+    processor = TaskEventProcessor(repository, scheduler, worker_count=1)
+
+    task = TaskRecord(
+        task_id="2",
+        service="sync",
+        user_id="bob",
+        status=TaskStatus.PENDING,
+        parameters={},
+    )
+    await repository.save(task)
+
+    event = TaskSubmission(
+        payload={
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+            "parameters": task.parameters,
+        }
+    )
+
+    await processor._handle_task_submission(event)
+
+    updated_task = await repository.get(task.task_id)
+    assert updated_task is not None
+    assert updated_task.status is TaskStatus.FAILED
+    assert updated_task.logs[0].endswith(",Dispatching to scheduler")
+    assert updated_task.logs[-1].endswith(
+        f",Scheduler returned {status.HTTP_403_FORBIDDEN}: {error_message}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_scheduler_cancellation_error_404_marks_task_failed() -> None:
+    repository = _FakeRepository()
+    error_message = "{\"detail\":\"Not found\"}"
+    scheduler = _ErroringScheduler(status_code=status.HTTP_404_NOT_FOUND, response_text=error_message)
+    scheduler.raise_on_cancel = True
+    processor = TaskEventProcessor(repository, scheduler, worker_count=1)
+
+    task = TaskRecord(
+        task_id="3",
+        service="sync",
+        user_id="carol",
+        status=TaskStatus.RUNNING,
+        parameters={},
+    )
+    await repository.save(task)
+
+    event = TaskCancellation(
+        payload={
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+        }
+    )
+
+    await processor._handle_task_cancellation(event)
+
+    updated_task = await repository.get(task.task_id)
+    assert updated_task is not None
+    assert updated_task.status is TaskStatus.FAILED
+    assert updated_task.logs[-1].endswith(
+        f",Scheduler returned {status.HTTP_404_NOT_FOUND}: {error_message}"
+    )
