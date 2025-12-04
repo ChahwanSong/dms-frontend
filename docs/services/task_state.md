@@ -64,6 +64,10 @@ Each log entry is prefixed with an ISO 8601 timestamp in the configured timezone
 
 `TaskRecord.result` holds optional structured outputs from the workload. It is intended for Kubernetes pod status snapshots (stored as strings, such as JSON-encoded pod status) and combined launcher output (stdout and stderr coalesced into a single string). `update_result` is additive: only fields passed to the method are overwritten, making it safe for multiple processes to add pod state or output independently.
 
+### Job identifiers
+
+`TaskRecord.jobs` stores any job identifiers assigned by external schedulers. The list defaults to empty so callers can choose when to populate it (for example, after a scheduler returns the job ID on submission).
+
 ## Testing in downstream projects
 
 When unit-testing an integration that depends on the shared repository, stub out the Redis clients to avoid network calls. The `tests/test_task_state.py` file in this repository demonstrates patching `Redis.from_url` with mocks so the provider returns a lightweight repository while still exercising key behaviours (ping checks and connection cleanup).
