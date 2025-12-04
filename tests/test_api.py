@@ -10,6 +10,7 @@ import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
+from app import services_container
 from app.core.config import get_settings
 from app.main import create_app
 from app.services.models import TaskRecord, TaskStatus
@@ -293,7 +294,11 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
         f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"}, headers=AUTH_HEADERS
     )
     assert cancel_response.status_code == 200
-    assert cancel_response.json()["task"]["status"] == "cancel_requested"
+    cancel_task = cancel_response.json()["task"]
+    assert any(
+        log_entry.split(",", 1)[1] == "Cancellation requested at frontend"
+        for log_entry in cancel_task["logs"]
+    )
 
     async def _task_cancelled() -> bool:
         response = await test_app.get(
@@ -302,6 +307,32 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
         return response.status_code == 200 and response.json()["task"]["status"] == "cancelled"
 
     await wait_for_condition(_task_cancelled)
+
+
+@pytest.mark.asyncio
+async def test_cancel_request_is_noop_when_already_requested(test_app: AsyncClient) -> None:
+    provider = services_container.get_redis_provider_instance()
+    assert provider is not None
+    repository = provider.repository
+    task_id = await repository.next_task_id()
+    task = TaskRecord(
+        task_id=task_id,
+        service="scan",
+        user_id="bob",
+        status=TaskStatus.CANCEL_REQUESTED,
+        parameters={},
+        logs=[format_log_entry("Cancellation already requested")],
+    )
+    await repository.save(task)
+
+    cancel_response = await test_app.post(
+        f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"}, headers=AUTH_HEADERS
+    )
+    assert cancel_response.status_code == 200
+    cancel_task = cancel_response.json()["task"]
+    assert cancel_task["status"] == TaskStatus.CANCEL_REQUESTED.value
+    assert len(cancel_task["logs"]) == 1
+    assert cancel_task["logs"][0].split(",", 1)[1] == "Cancellation already requested"
 
 
 @pytest.mark.asyncio
