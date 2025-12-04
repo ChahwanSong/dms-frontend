@@ -1,6 +1,6 @@
 # Task Repository Architecture
 
-This document describes the storage layout and indexing strategy used by `task_state.repository` for persisting asynchronous task metadata. `RedisTaskRepository` operates on `TaskRecord` models from `task_state.models`, which capture the task identifier, owning service, user, status, parameters, timestamps, log messages, and an optional structured result payload (`TaskResult`).
+This document describes the storage layout and indexing strategy used by `task_state.repository` for persisting asynchronous task metadata. `RedisTaskRepository` operates on `TaskRecord` models from `task_state.models`, which capture the task identifier, owning service, user, status, parameters, associated job identifiers, timestamps, log messages, and an optional structured result payload (`TaskResult`).
 
 ## Redis-backed data layout
 
