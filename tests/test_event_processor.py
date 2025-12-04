@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Iterable
 
@@ -203,7 +204,51 @@ async def test_scheduler_error_403_marks_task_failed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scheduler_cancellation_error_404_marks_task_failed() -> None:
+async def test_scheduler_error_404_logged_without_state_change(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.CRITICAL)
+    repository = _FakeRepository()
+    error_message = "{\"detail\":\"Not found\"}"
+    scheduler = _ErroringScheduler(status_code=status.HTTP_404_NOT_FOUND, response_text=error_message)
+    processor = TaskEventProcessor(repository, scheduler, worker_count=1)
+
+    task = TaskRecord(
+        task_id="3",
+        service="sync",
+        user_id="carol",
+        status=TaskStatus.PENDING,
+        parameters={},
+    )
+    await repository.save(task)
+
+    event = TaskSubmission(
+        payload={
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+            "parameters": task.parameters,
+        }
+    )
+
+    await processor._handle_task_submission(event)
+
+    updated_task = await repository.get(task.task_id)
+    assert updated_task is not None
+    assert updated_task.status is TaskStatus.DISPATCHING
+    assert updated_task.logs == [updated_task.logs[0]]
+    assert scheduler.payloads == [
+        {
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+            "parameters": task.parameters,
+        }
+    ]
+    assert any(record.levelno == logging.CRITICAL for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_cancellation_error_404_logs_without_state_change(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.CRITICAL)
     repository = _FakeRepository()
     error_message = "{\"detail\":\"Not found\"}"
     scheduler = _ErroringScheduler(status_code=status.HTTP_404_NOT_FOUND, response_text=error_message)
@@ -231,7 +276,13 @@ async def test_scheduler_cancellation_error_404_marks_task_failed() -> None:
 
     updated_task = await repository.get(task.task_id)
     assert updated_task is not None
-    assert updated_task.status is TaskStatus.FAILED
-    assert updated_task.logs[-1].endswith(
-        f",Scheduler returned {status.HTTP_404_NOT_FOUND}: {error_message}"
-    )
+    assert updated_task.status is TaskStatus.RUNNING
+    assert updated_task.logs == []
+    assert scheduler.payloads == [
+        {
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+        }
+    ]
+    assert any(record.levelno == logging.CRITICAL for record in caplog.records)
