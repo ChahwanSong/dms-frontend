@@ -156,10 +156,9 @@ class TaskEventProcessor:
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task cancellation failed", extra={"task_id": task_id})
             await self._repository.append_log(task_id, f"Cancellation error: {exc}")
+
         if skip_status_update:
             return
 
         if failure_status is TaskStatus.FAILED:
             await self._repository.set_status(task_id, failure_status, log_entry=failure_log)
-        else:
-            await self._repository.set_status(task_id, TaskStatus.CANCELLED, log_entry="Task cancelled")
