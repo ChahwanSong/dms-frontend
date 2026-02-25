@@ -101,7 +101,7 @@ Use `dms-frontend show-config` to print the effective configuration at runtime.
 Start the API server directly with Uvicorn:
 
 ```bash
-uvicorn app.main --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
 ```
 
 Add `--reload` for local hot reloading. The Typer CLI (`dms-frontend` entrypoint or `python -m cli.main`) remains available for helper commands such as inspecting configuration or task metadata.
@@ -133,53 +133,53 @@ Task status responses include the latest log entries alongside metadata and a `r
 
 ## Usage examples
 
-Assuming the service is running locally on port 8000:
+Assuming the service is running locally on port 8000 over HTTPS:
 
 ```bash
 # API prefix for convenience
-api_prefix="http://localhost:8000/api/v1"
+api_prefix="https://localhost:8000/api/v1"
 token="${DMS_OPERATOR_TOKEN:-$(printenv DMS_OPERATOR_TOKEN)}"
 
 # Submit a synchronous task for user "alice"
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
 
 # Submit a task with multiple query params (becomes task inputs)
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks" \
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks" \
   --data "" --get \
   --data-urlencode "src=/home/gpu1" \
   --data-urlencode "dst=/home/cpu1"
 
 # Fetch task status scoped to the user
 task_id="<task-id>"
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Results (e.g. pod status, combined launcher stdout/stderr output) are returned in the `result` field
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
 
 # List users who submitted sync tasks
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
 
 # List user tasks
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/alice/tasks"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/alice/tasks"
 
 # Cancel a task
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=alice"
 
 # Delete task metadata and logs (user-scoped)
-curl -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -k -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Operator listing with token
-curl "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
+curl -k "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
 
 # Operator cancellation of any task
-curl -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"
+curl -k -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"
 
 # Operator cleanup of task metadata/logs
-curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
+curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
 
-# Start the service directly with Uvicorn
-uvicorn app.main --host 0.0.0.0 --port 8000
+# Start the service directly with Uvicorn + TLS
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
 
 # Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
 dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}" --operator-token "${token}"
@@ -212,10 +212,10 @@ The suite exercises task submission, cancellation, and operator authentication f
 The `dms-frontend` Typer CLI is installed with the project and provides shortcuts for inspecting and interacting with the API.
 
 1. Ensure dependencies are installed (e.g., `pip install -e .[dev] --no-build-isolation`).
-2. Set the API base URL (defaults to `http://127.0.0.1:8000/api/v1`):
+2. Set the API base URL (defaults to `https://127.0.0.1:8000/api/v1`):
 
    ```bash
-   export DMS_API_BASE="http://localhost:8000/api/v1"
+   export DMS_API_BASE="https://localhost:8000/api/v1"
    ```
 
 3. Provide the operator token (required for all API calls except `/help`):
