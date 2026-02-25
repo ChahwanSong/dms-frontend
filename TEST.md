@@ -61,7 +61,7 @@ set -eux pipefail;\
     export DMS_REDIS_WRITE_URL="redis://127.0.0.1:6379";\
     export DMS_REDIS_READ_URL="redis://127.0.0.1:6379";\
     export DMS_SCHEDULER_BASE_URL="http://127.0.0.1:9000";\
-    uvicorn app.main --host 0.0.0.0 --port 8000
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
 ```
 
 
@@ -97,51 +97,51 @@ kubectl exec -it frontend-test -- bash
 
 ### 쿼리 날리기
 ```shell
-api_prefix="http://localhost:8000/api/v1"
+api_prefix="https://localhost:8000/api/v1"
 token="${DMS_OPERATOR_TOKEN:-$(printenv DMS_OPERATOR_TOKEN)}"
 
-curl -X GET "${api_prefix}/help" | jq
-curl -X GET "${api_prefix}/healthz" | jq
+curl -k -X GET "${api_prefix}/help" | jq
+curl -k -X GET "${api_prefix}/healthz" | jq
 
 # submit a sync task with name "cocoa.song"
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks?input=123456"
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks?input=123456"
 
 # Submit a task with multiple query params (becomes task inputs)
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks" \
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks" \
   --data "" --get \
   --data-urlencode "src=/home/gpu1" \
   --data-urlencode "dst=/scratch"
 
 # Fetch task status scoped to the user
 task_id="1"
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song" | jq
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song" | jq
 
 # List users who submitted sync tasks
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
 
 # List user tasks
-curl -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/cocoa.song/tasks"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/cocoa.song/tasks"
 
 # Cancel a task
-curl -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
+curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=cocoa.song" | jq
 
 # Delete task metadata and logs (user-scoped)
-curl -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song"
+curl -k -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song"
 
 # Operator listing with token
-curl "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
+curl -k "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
 
 # Operator cancellation of any task
-curl -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"
+curl -k -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"
 
 # Operator cleanup of task metadata/logs
-curl -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
+curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
 ```
 
 CLI 사용
 ```shell
-api_prefix="http://localhost:8000/api/v1"
+api_prefix="https://localhost:8000/api/v1"
 dms-frontend tasks list --service sync --user cocoa.song --api-base "${api_prefix}" | jq
 
 ```
