@@ -48,6 +48,9 @@ class _FakeRepository(TaskRepository):
         self._sequence += 1
         return str(self._sequence)
 
+    async def peek_next_task_id(self) -> str:
+        return str(self._sequence + 1)
+
     async def save(self, task: TaskRecord) -> None:
         self._store[task.task_id] = task
         self._service_index[task.service].add(task.task_id)
@@ -125,6 +128,9 @@ class _FakeRepository(TaskRepository):
     async def list_by_service_and_user(self, service: str, user_id: str) -> list[TaskRecord]:
         key = (service, user_id)
         return [self._store[task_id] for task_id in self._service_user_index.get(key, set())]
+
+    async def list_by_user(self, user_id: str) -> list[TaskRecord]:
+        return [task for task in self._store.values() if task.user_id == user_id]
 
     async def list_users_by_service(self, service: str) -> list[str]:
         return list(self._service_users.get(service, set()))
@@ -345,3 +351,70 @@ async def test_service_user_listing(test_app: AsyncClient) -> None:
     assert response.status_code == 200
     users = set(response.json()["users"])
     assert users == {"alice", "bob"}
+
+
+@pytest.mark.asyncio
+async def test_operator_next_task_id_cursor(test_app: AsyncClient) -> None:
+    response = await test_app.get("/api/v1/admin/tasks/next-id", headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"next_task_id": "1"}
+
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    response = await test_app.get("/api/v1/admin/tasks/next-id", headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"next_task_id": "2"}
+
+
+@pytest.mark.asyncio
+async def test_operator_bulk_service_user_operations(test_app: AsyncClient) -> None:
+    first = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    second = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+
+    service_user_cancel = await test_app.post(
+        "/api/v1/services/sync/users/alice/tasks/cancel", headers=AUTH_HEADERS
+    )
+    assert service_user_cancel.status_code == 200
+    payload = service_user_cancel.json()
+    assert payload["matched_count"] == 2
+    assert payload["affected_count"] == 2
+    assert set(payload["task_ids"]) == {first.json()["task_id"], second.json()["task_id"]}
+
+    service_cleanup = await test_app.delete("/api/v1/admin/services/sync/tasks", headers=AUTH_HEADERS)
+    assert service_cleanup.status_code == 200
+    assert service_cleanup.json()["matched_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_operator_user_listing_and_service_summary(test_app: AsyncClient) -> None:
+    first = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    second = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    third = await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+
+    await test_app.post(
+        f"/api/v1/services/sync/tasks/{first.json()['task_id']}/cancel",
+        params={"user_id": "alice"},
+        headers=AUTH_HEADERS,
+    )
+
+    provider = services_container.get_redis_provider_instance()
+    assert provider is not None
+    repository = provider.repository
+    await repository.set_status(second.json()["task_id"], TaskStatus.COMPLETED)
+    await repository.set_status(third.json()["task_id"], TaskStatus.FAILED)
+
+    user_tasks = await test_app.get("/api/v1/services/users/alice/tasks", headers=AUTH_HEADERS)
+    assert user_tasks.status_code == 200
+    assert len(user_tasks.json()["tasks"]) == 2
+
+    summary = await test_app.get("/api/v1/admin/services/sync/tasks/summary", headers=AUTH_HEADERS)
+    assert summary.status_code == 200
+    summary_payload = summary.json()["summary"]
+    assert summary_payload["service"] == "sync"
+    assert first.json()["task_id"] in summary_payload["failed_task_ids"]
+    assert second.json()["task_id"] in summary_payload["success_task_ids"]
+    assert third.json()["task_id"] in summary_payload["failed_task_ids"]
+
+    user_cleanup = await test_app.delete("/api/v1/services/users/alice/tasks", headers=AUTH_HEADERS)
+    assert user_cleanup.status_code == 200
+    assert user_cleanup.json()["matched_count"] == 2

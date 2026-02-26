@@ -27,6 +27,9 @@ class _FakeRepository(TaskRepository):
         self._sequence += 1
         return str(self._sequence)
 
+    async def peek_next_task_id(self) -> str:
+        return str(self._sequence + 1)
+
     async def save(self, task: TaskRecord) -> None:
         self._store[task.task_id] = task
         self._service_index[task.service].add(task.task_id)
@@ -88,6 +91,9 @@ class _FakeRepository(TaskRepository):
     async def list_by_service_and_user(self, service: str, user_id: str) -> list[TaskRecord]:
         key = (service, user_id)
         return [self._store[task_id] for task_id in self._service_user_index.get(key, set())]
+
+    async def list_by_user(self, user_id: str) -> list[TaskRecord]:
+        return [task for task in self._store.values() if task.user_id == user_id]
 
     async def list_users_by_service(self, service: str) -> list[str]:
         return list(self._service_users.get(service, set()))

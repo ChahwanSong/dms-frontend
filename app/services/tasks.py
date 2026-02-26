@@ -41,6 +41,9 @@ class TaskService:
         logger.info("Task created", extra={"task_id": task_id, "service": service, "user_id": user_id})
         return TaskCreateResult(task_id=task_id, status=record.status)
 
+    async def peek_next_task_id(self) -> str:
+        return await self._repository.peek_next_task_id()
+
     async def list_user_tasks(self, service: str, user_id: str) -> list[TaskRecord]:
         return await self._repository.list_by_service_and_user(service, user_id)
 
@@ -52,6 +55,9 @@ class TaskService:
 
     async def list_all_tasks(self) -> list[TaskRecord]:
         return await self._repository.list_all()
+
+    async def list_tasks_by_user(self, user_id: str) -> list[TaskRecord]:
+        return await self._repository.list_by_user(user_id)
 
     async def get_task(self, task_id: str) -> TaskRecord | None:
         return await self._repository.get(task_id)
@@ -102,6 +108,21 @@ class TaskService:
             return False
         await self._repository.delete(task_id)
         return True
+
+    async def cancel_tasks(self, tasks: list[TaskRecord]) -> tuple[int, list[str]]:
+        affected_ids: list[str] = []
+        for task in tasks:
+            updated = await self.cancel_task(task.task_id, service=task.service, user_id=task.user_id)
+            if updated:
+                affected_ids.append(task.task_id)
+        return len(affected_ids), affected_ids
+
+    async def cleanup_tasks(self, tasks: list[TaskRecord]) -> tuple[int, list[str]]:
+        affected_ids: list[str] = []
+        for task in tasks:
+            if await self.cleanup_task(task.task_id, service=task.service, user_id=task.user_id):
+                affected_ids.append(task.task_id)
+        return len(affected_ids), affected_ids
 
     async def append_log(self, task_id: str, message: str) -> TaskRecord | None:
         return await self._repository.append_log(task_id, message)

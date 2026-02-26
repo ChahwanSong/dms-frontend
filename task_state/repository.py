@@ -31,6 +31,9 @@ class TaskRepository(abc.ABC):
     async def next_task_id(self) -> str: ...
 
     @abc.abstractmethod
+    async def peek_next_task_id(self) -> str: ...
+
+    @abc.abstractmethod
     async def save(self, task: TaskRecord) -> None: ...
 
     @abc.abstractmethod
@@ -69,6 +72,9 @@ class TaskRepository(abc.ABC):
     async def list_by_service_and_user(self, service: str, user_id: str) -> List[TaskRecord]: ...
 
     @abc.abstractmethod
+    async def list_by_user(self, user_id: str) -> List[TaskRecord]: ...
+
+    @abc.abstractmethod
     async def list_users_by_service(self, service: str) -> List[str]: ...
 
 
@@ -100,6 +106,13 @@ class RedisTaskRepository(TaskRepository):
         next_id = await self._execute(self._writer.incr("task:id:sequence"))
         return str(next_id)
 
+    async def peek_next_task_id(self) -> str:
+        current = await self._execute(self._reader.get("task:id:sequence"))
+        if current is None:
+            return "1"
+        current_int = int(current.decode() if isinstance(current, bytes) else current)
+        return str(current_int + 1)
+
     async def save(self, task: TaskRecord) -> None:
         await self._execute(
             self._writer.set(
@@ -120,6 +133,9 @@ class RedisTaskRepository(TaskRepository):
         service_user_index = self._service_user_index(task.service, task.user_id)
         await self._execute(self._writer.sadd(service_user_index, task.task_id))
         await self._ensure_ttl(service_user_index)
+        user_index = self._user_index(task.user_id)
+        await self._execute(self._writer.sadd(user_index, task.task_id))
+        await self._ensure_ttl(user_index)
 
     async def get(self, task_id: str) -> TaskRecord | None:
         raw = await self._execute(self._reader.get(self._task_key(task_id)))
@@ -210,6 +226,10 @@ class RedisTaskRepository(TaskRepository):
         )
         return await self.list_by_ids(ids)
 
+    async def list_by_user(self, user_id: str) -> List[TaskRecord]:
+        ids = await self._execute(self._reader.smembers(self._user_index(user_id)))
+        return await self.list_by_ids(ids)
+
     async def list_users_by_service(self, service: str) -> List[str]:
         raw_users = await self._execute(self._reader.smembers(self._service_users_index(service)))
         return [user.decode() if isinstance(user, bytes) else str(user) for user in raw_users]
@@ -247,6 +267,10 @@ class RedisTaskRepository(TaskRepository):
     def _task_metadata_key(task_id: str) -> str:
         return f"task:{task_id}:metadata"
 
+    @staticmethod
+    def _user_index(user_id: str) -> str:
+        return f"index:user:{user_id}"
+
     async def _ensure_ttl(self, key: str) -> None:
         await self._execute(self._writer.expire(key, self._ttl_seconds))
 
@@ -277,5 +301,5 @@ class RedisTaskRepository(TaskRepository):
         await self._execute(
             self._writer.srem(self._service_user_index(service, user_id), task_id)
         )
+        await self._execute(self._writer.srem(self._user_index(user_id), task_id))
         await self._cleanup_user_index(service, user_id)
-

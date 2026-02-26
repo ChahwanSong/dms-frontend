@@ -162,3 +162,6 @@ class TaskEventProcessor:
 
         if failure_status is TaskStatus.FAILED:
             await self._repository.set_status(task_id, failure_status, log_entry=failure_log)
+            return
+
+        await self._repository.set_status(task_id, TaskStatus.CANCELLED, log_entry="Cancellation acknowledged by scheduler")

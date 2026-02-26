@@ -129,8 +129,28 @@ curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tas
 # Delete task metadata and logs (user-scoped)
 curl -k -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=cocoa.song"
 
+# User-level list/cancel/delete
+curl -k "${api_prefix}/services/users/cocoa.song/tasks" -H "X-Operator-Token: ${token}" | jq
+curl -k -X POST "${api_prefix}/services/users/cocoa.song/tasks/cancel" -H "X-Operator-Token: ${token}" | jq
+curl -k -X DELETE "${api_prefix}/services/users/cocoa.song/tasks" -H "X-Operator-Token: ${token}" | jq
+
+# Service + user scoped cancel/delete
+curl -k -X POST "${api_prefix}/services/sync/users/cocoa.song/tasks/cancel" -H "X-Operator-Token: ${token}" | jq
+curl -k -X DELETE "${api_prefix}/services/sync/users/cocoa.song/tasks" -H "X-Operator-Token: ${token}" | jq
+
 # Operator listing with token
 curl -k "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
+
+# Peek next task ID cursor
+curl -k "${api_prefix}/admin/tasks/next-id" -H "X-Operator-Token: ${token}" | jq
+
+# Service-level list/cancel/delete
+curl -k "${api_prefix}/admin/services/sync/tasks" -H "X-Operator-Token: ${token}" | jq
+curl -k -X POST "${api_prefix}/admin/services/sync/tasks/cancel" -H "X-Operator-Token: ${token}" | jq
+curl -k -X DELETE "${api_prefix}/admin/services/sync/tasks" -H "X-Operator-Token: ${token}" | jq
+
+# Service-level compact status summary
+curl -k "${api_prefix}/admin/services/sync/tasks/summary" -H "X-Operator-Token: ${token}" | jq
 
 # Operator cancellation of any task
 curl -k -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Token: ${token}"

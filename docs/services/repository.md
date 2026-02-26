@@ -64,6 +64,8 @@ The repository interface exposed by `TaskRepository` supports the following acce
 * Full inventory listing (`list_all`).
 * Service-scoped listing (`list_by_service`).
 * Combined service and user filtering (`list_by_service_and_user`).
+* User-scoped listing across services (`list_by_user`).
+* Read-only next task ID cursor lookup without incrementing (`peek_next_task_id`).
 
 All implementations are expected to maintain the indexes described above to guarantee that the queries return consistent, up-to-date results.
 

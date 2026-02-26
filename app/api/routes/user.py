@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.services.models import (
+    TaskBulkActionResponse,
     TaskCreateResult,
     TaskListResponse,
     TaskStatusResponse,
@@ -35,6 +36,48 @@ async def create_task(service: str, user_id: str, request: Request, task_service
     parameters: dict[str, Any] = dict(request.query_params)
     result = await task_service.create_task(service, user_id, parameters)
     return result
+
+
+@router.post("/{service}/users/{user_id}/tasks/cancel", response_model=TaskBulkActionResponse)
+async def cancel_service_user_tasks(
+    service: str,
+    user_id: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskBulkActionResponse:
+    tasks = await task_service.list_user_tasks(service, user_id)
+    affected_count, task_ids = await task_service.cancel_tasks(tasks)
+    return TaskBulkActionResponse(matched_count=len(tasks), affected_count=affected_count, task_ids=task_ids)
+
+
+@router.delete("/{service}/users/{user_id}/tasks", response_model=TaskBulkActionResponse)
+async def cleanup_service_user_tasks(
+    service: str,
+    user_id: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskBulkActionResponse:
+    tasks = await task_service.list_user_tasks(service, user_id)
+    affected_count, task_ids = await task_service.cleanup_tasks(tasks)
+    return TaskBulkActionResponse(matched_count=len(tasks), affected_count=affected_count, task_ids=task_ids)
+
+
+@router.get("/users/{user_id}/tasks", response_model=TaskListResponse)
+async def list_tasks_by_user(user_id: str, task_service: TaskService = Depends(get_task_service)) -> TaskListResponse:
+    tasks = await task_service.list_tasks_by_user(user_id)
+    return TaskListResponse(tasks=tasks)
+
+
+@router.post("/users/{user_id}/tasks/cancel", response_model=TaskBulkActionResponse)
+async def cancel_tasks_by_user(user_id: str, task_service: TaskService = Depends(get_task_service)) -> TaskBulkActionResponse:
+    tasks = await task_service.list_tasks_by_user(user_id)
+    affected_count, task_ids = await task_service.cancel_tasks(tasks)
+    return TaskBulkActionResponse(matched_count=len(tasks), affected_count=affected_count, task_ids=task_ids)
+
+
+@router.delete("/users/{user_id}/tasks", response_model=TaskBulkActionResponse)
+async def cleanup_tasks_by_user(user_id: str, task_service: TaskService = Depends(get_task_service)) -> TaskBulkActionResponse:
+    tasks = await task_service.list_tasks_by_user(user_id)
+    affected_count, task_ids = await task_service.cleanup_tasks(tasks)
+    return TaskBulkActionResponse(matched_count=len(tasks), affected_count=affected_count, task_ids=task_ids)
 
 
 @router.get("/{service}/tasks/{task_id}", response_model=TaskStatusResponse)
