@@ -283,6 +283,23 @@ async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_task_list_responses_are_sorted_by_task_id(test_app: AsyncClient) -> None:
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+
+    user_response = await test_app.get("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    assert user_response.status_code == 200
+    user_task_ids = [task["task_id"] for task in user_response.json()["tasks"]]
+    assert user_task_ids == sorted(user_task_ids, key=int)
+
+    operator_response = await test_app.get("/api/v1/admin/tasks", headers=AUTH_HEADERS)
+    assert operator_response.status_code == 200
+    operator_task_ids = [task["task_id"] for task in operator_response.json()["tasks"]]
+    assert operator_task_ids == sorted(operator_task_ids, key=int)
+
+
+@pytest.mark.asyncio
 async def test_operator_token_required(test_app: AsyncClient) -> None:
     response = await test_app.get("/api/v1/admin/tasks", headers={"X-Operator-Token": "wrong"})
     assert response.status_code == 401
