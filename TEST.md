@@ -157,6 +157,9 @@ curl -k -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Tok
 
 # Operator cleanup of task metadata/logs
 curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
+
+# NOTE: /admin/tasks/{task_id} delete는 취소 요청을 비동기로 먼저 전달한 뒤,
+# task metadata/log 를 즉시 삭제한다. scheduler 쪽 job/pod 정리 완료까지 기다리지는 않는다.
 ```
 
 CLI 사용

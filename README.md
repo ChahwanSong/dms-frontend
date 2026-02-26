@@ -133,13 +133,16 @@ operator routes.
 | GET | `/admin/tasks` | List all tasks across services | `X-Operator-Token` header |
 | GET | `/admin/tasks/next-id` | Return the next task ID cursor without consuming it | `X-Operator-Token` header |
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
-| DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs | `X-Operator-Token` header |
+| DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs (cancel is requested asynchronously first; metadata is then deleted immediately) | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks` | List tasks for a specific service | `X-Operator-Token` header |
 | POST | `/admin/services/{service}/tasks/cancel` | Cancel all tasks owned by a service | `X-Operator-Token` header |
 | DELETE | `/admin/services/{service}/tasks` | Cleanup (delete) all tasks owned by a service | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks/summary` | Compact summary of pending/success/failed task IDs for a service | `X-Operator-Token` header |
 
 Task status responses include the latest log entries alongside metadata and a `result` object that can store Kubernetes pod status snapshots as strings plus the launcher job's combined stdout/stderr output. Each log entry is timestamped using the configured timezone (Asia/Seoul by default) in the format `<iso-timestamp>,<message>` (for example, `2025-11-17T10:00:16.515926+09:00,Dispatching to scheduler`). Set `DMS_TIMEZONE=UTC` if you prefer UTC offsets instead. The `/help` response mirrors this table and is available at `/api/v1/help`.
+
+> **Important cleanup semantics**
+> `DELETE /admin/tasks/{task_id}` first publishes a cancellation request to the scheduler path asynchronously and then removes stored task metadata/logs from Redis immediately. The endpoint does **not** wait for scheduler-side Kubernetes resources (for example job/pod) cleanup completion before returning.
 
 ## Usage examples
 
@@ -207,6 +210,9 @@ curl -k -X POST "${api_prefix}/admin/tasks/${task_id}/cancel" -H "X-Operator-Tok
 
 # Operator cleanup of task metadata/logs
 curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: ${token}"
+
+# NOTE: this endpoint requests cancellation asynchronously, but returns
+# after metadata/log deletion (it does not wait for scheduler-side job/pod cleanup completion)
 
 # Start the service directly with Uvicorn + TLS
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
