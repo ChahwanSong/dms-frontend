@@ -45,19 +45,33 @@ class TaskService:
         return await self._repository.peek_next_task_id()
 
     async def list_user_tasks(self, service: str, user_id: str) -> list[TaskRecord]:
-        return await self._repository.list_by_service_and_user(service, user_id)
+        tasks = await self._repository.list_by_service_and_user(service, user_id)
+        return self._sort_by_task_id(tasks)
 
     async def list_service_tasks(self, service: str) -> list[TaskRecord]:
-        return await self._repository.list_by_service(service)
+        tasks = await self._repository.list_by_service(service)
+        return self._sort_by_task_id(tasks)
 
     async def list_service_users(self, service: str) -> list[str]:
         return await self._repository.list_users_by_service(service)
 
     async def list_all_tasks(self) -> list[TaskRecord]:
-        return await self._repository.list_all()
+        tasks = await self._repository.list_all()
+        return self._sort_by_task_id(tasks)
 
     async def list_tasks_by_user(self, user_id: str) -> list[TaskRecord]:
-        return await self._repository.list_by_user(user_id)
+        tasks = await self._repository.list_by_user(user_id)
+        return self._sort_by_task_id(tasks)
+
+    @staticmethod
+    def _sort_by_task_id(tasks: list[TaskRecord]) -> list[TaskRecord]:
+        def _task_id_key(task: TaskRecord) -> tuple[int, int | str]:
+            try:
+                return (0, int(task.task_id))
+            except (TypeError, ValueError):
+                return (1, task.task_id)
+
+        return sorted(tasks, key=_task_id_key)
 
     async def get_task(self, task_id: str) -> TaskRecord | None:
         return await self._repository.get(task_id)
