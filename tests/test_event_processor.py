@@ -10,7 +10,7 @@ from starlette import status
 from app.core.events import TaskCancellation, TaskSubmission
 from app.services.event_processor import TaskEventProcessor
 from app.services.repository import TaskRepository, format_log_entry
-from app.services.scheduler import SchedulerResponseError
+from app.services.scheduler import SchedulerResponseError, SchedulerUnavailableError
 from task_state.models import TaskRecord, TaskStatus
 from task_state.timezone import now
 
@@ -98,6 +98,26 @@ class _FakeRepository(TaskRepository):
     async def list_users_by_service(self, service: str) -> list[str]:
         return list(self._service_users.get(service, set()))
 
+
+
+
+class _UnavailableScheduler:
+    def __init__(self) -> None:
+        self.payloads: list[dict] = []
+
+    async def submit_task(self, payload: dict) -> None:
+        self.payloads.append(payload)
+
+    async def cancel_task(self, payload: dict) -> None:
+        self.payloads.append(payload)
+        raise SchedulerUnavailableError(
+            "scheduler unavailable",
+            url="http://scheduler/cancel",
+            original=RuntimeError("connection refused"),
+        )
+
+    async def aclose(self) -> None:  # pragma: no cover - unused
+        return None
 
 class _ErroringScheduler:
     def __init__(self, *, status_code: int = 400, response_text: str = "") -> None:
@@ -292,3 +312,42 @@ async def test_scheduler_cancellation_error_404_logs_without_state_change(caplog
         }
     ]
     assert any(record.levelno == logging.CRITICAL for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_cancellation_unavailable_logs_without_state_change() -> None:
+    repository = _FakeRepository()
+    scheduler = _UnavailableScheduler()
+    processor = TaskEventProcessor(repository, scheduler, worker_count=1)
+
+    task = TaskRecord(
+        task_id="4",
+        service="sync",
+        user_id="dave",
+        status=TaskStatus.RUNNING,
+        parameters={},
+    )
+    await repository.save(task)
+
+    event = TaskCancellation(
+        payload={
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+        }
+    )
+
+    await processor._handle_task_cancellation(event)
+
+    updated_task = await repository.get(task.task_id)
+    assert updated_task is not None
+    assert updated_task.status is TaskStatus.RUNNING
+    assert len(updated_task.logs) == 1
+    assert "Scheduler unavailable at http://scheduler/cancel: connection refused" in updated_task.logs[0]
+    assert scheduler.payloads == [
+        {
+            "task_id": task.task_id,
+            "service": task.service,
+            "user_id": task.user_id,
+        }
+    ]

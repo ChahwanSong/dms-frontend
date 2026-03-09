@@ -40,6 +40,10 @@ The service is event driven and composed of the following layers:
 3. Worker coroutines in the `TaskEventProcessor` dequeue events, call the scheduler client, and update status/log entries.
 4. Task state is queryable via Redis-backed repository methods, ensuring horizontally scalable reads in the Kubernetes cluster.
 
+Cancellation semantics:
+- A task moves to `cancelled` only when the scheduler confirms cancellation.
+- If the scheduler is unavailable, the API records the scheduler-unavailable log entry and keeps the existing task status unchanged.
+
 ## Repository layout
 
 ```
