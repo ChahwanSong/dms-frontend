@@ -153,9 +153,11 @@ class TaskEventProcessor:
             await self._repository.append_log(
                 task_id, f"Scheduler unavailable at {exc.url}: {exc.original}"
             )
+            return
         except Exception as exc:  # pragma: no cover - network failure path
             logger.exception("Task cancellation failed", extra={"task_id": task_id})
             await self._repository.append_log(task_id, f"Cancellation error: {exc}")
+            return
 
         if skip_status_update:
             return
