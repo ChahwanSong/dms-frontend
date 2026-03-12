@@ -360,14 +360,13 @@ async def test_cancel_request_is_noop_when_already_requested(test_app: AsyncClie
 
 @pytest.mark.asyncio
 async def test_service_user_listing(test_app: AsyncClient) -> None:
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
     await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
     await test_app.post("/api/v1/services/scan/users/charlie/tasks", headers=AUTH_HEADERS)
 
     response = await test_app.get("/api/v1/services/sync/users", headers=AUTH_HEADERS)
     assert response.status_code == 200
-    users = set(response.json()["users"])
-    assert users == {"alice", "bob"}
+    assert response.json()["users"] == ["alice", "bob"]
 
 
 @pytest.mark.asyncio

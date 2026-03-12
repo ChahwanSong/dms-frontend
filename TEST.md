@@ -65,7 +65,7 @@ set -eux pipefail;\
 ```
 
 
-### 테스트용 DNS scheduler 실행
+### 테스트용 DMS scheduler 실행
 ```shell
 #!/usr/bin/env bash
 set -euo pipefail
@@ -74,15 +74,14 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "${SCRIPT_DIR}"
 
 export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+":${PYTHONPATH}"}"
-export DMS_SCHEDULER_URL="${DMS_SCHEDULER_URL:-http://127.0.0.1:9000}"
 
 if [[ -z "${VIRTUAL_ENV:-}" && -f "${SCRIPT_DIR}/.venv/bin/activate" ]]; then
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/.venv/bin/activate"
 fi
 
-echo "Starting local scheduler stub on ${DMS_SCHEDULER_URL}" >&2
-exec python3 -m uvicorn "cli.local_scheduler:app" --host 127.0.0.1 --port 9000
+echo "Starting local scheduler stub on http://127.0.0.1:9000" >&2
+exec python3 -m uvicorn "app.dev.local_scheduler_stub:app" --host 127.0.0.1 --port 9000
 ```
 
 
@@ -161,16 +160,6 @@ curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: $
 # NOTE: /admin/tasks/{task_id} delete는 취소 요청을 비동기로 먼저 전달한 뒤,
 # task metadata/log 를 즉시 삭제한다. scheduler 쪽 job/pod 정리 완료까지 기다리지는 않는다.
 ```
-
-CLI 사용
-```shell
-api_prefix="https://localhost:8000/api/v1"
-dms-frontend tasks list --service sync --user cocoa.song --api-base "${api_prefix}" | jq
-
-```
-
-
-
 
 ### redis 직접 접근
 ```shell

@@ -20,25 +20,38 @@ class TaskService:
         self._repository = repository
         self._events = events
 
-    async def create_task(self, service: str, user_id: str, parameters: Dict[str, Any]) -> TaskCreateResult:
+    async def create_task(
+        self,
+        service: str,
+        user_id: str,
+        parameters: Dict[str, Any],
+    ) -> TaskCreateResult:
         task_id = await self._repository.next_task_id()
+        timestamp = now()
         record = TaskRecord(
             task_id=task_id,
             service=service,
             user_id=user_id,
             status=TaskStatus.PENDING,
             parameters=parameters,
-            created_at=now(),
-            updated_at=now(),
+            created_at=timestamp,
+            updated_at=timestamp,
         )
         await self._repository.save(record)
-        await self._events.publish(TaskSubmission(payload={
-            "task_id": task_id,
-            "service": service,
-            "user_id": user_id,
-            "parameters": parameters,
-        }))
-        logger.info("Task created", extra={"task_id": task_id, "service": service, "user_id": user_id})
+        await self._events.publish(
+            TaskSubmission(
+                payload={
+                    "task_id": task_id,
+                    "service": service,
+                    "user_id": user_id,
+                    "parameters": parameters,
+                }
+            )
+        )
+        logger.info(
+            "Task created",
+            extra={"task_id": task_id, "service": service, "user_id": user_id},
+        )
         return TaskCreateResult(task_id=task_id, status=record.status)
 
     async def peek_next_task_id(self) -> str:
@@ -53,7 +66,8 @@ class TaskService:
         return self._sort_by_task_id(tasks)
 
     async def list_service_users(self, service: str) -> list[str]:
-        return await self._repository.list_users_by_service(service)
+        users = await self._repository.list_users_by_service(service)
+        return sorted(users)
 
     async def list_all_tasks(self) -> list[TaskRecord]:
         tasks = await self._repository.list_all()
@@ -126,7 +140,11 @@ class TaskService:
     async def cancel_tasks(self, tasks: list[TaskRecord]) -> tuple[int, list[str]]:
         affected_ids: list[str] = []
         for task in tasks:
-            updated = await self.cancel_task(task.task_id, service=task.service, user_id=task.user_id)
+            updated = await self.cancel_task(
+                task.task_id,
+                service=task.service,
+                user_id=task.user_id,
+            )
             if updated:
                 affected_ids.append(task.task_id)
         return len(affected_ids), affected_ids
@@ -141,7 +159,13 @@ class TaskService:
     async def append_log(self, task_id: str, message: str) -> TaskRecord | None:
         return await self._repository.append_log(task_id, message)
 
-    async def update_status(self, task_id: str, status: TaskStatus, *, log_entry: str | None = None) -> TaskRecord | None:
+    async def update_status(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        *,
+        log_entry: str | None = None,
+    ) -> TaskRecord | None:
         return await self._repository.set_status(task_id, status, log_entry=log_entry)
 
     async def update_result(

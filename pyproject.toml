@@ -16,7 +16,6 @@ dependencies = [
     "asgi-lifespan==2.1.0",
     "redis>=7.0",
     "pydantic-settings>=2.2",
-    "typer>=0.9",
     "python-json-logger>=2.0",
 ]
 
@@ -27,11 +26,8 @@ dev = [
     "httpx>=0.26",
 ]
 
-[project.scripts]
-dms-frontend = "cli.main:main"
-
-[tool.setuptools]
-packages = ["cli", "app", "task_state"]
+[tool.setuptools.packages.find]
+include = ["app*", "task_state*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

@@ -50,13 +50,12 @@ Cancellation semantics:
 app/
   api/                # FastAPI routers, dependencies, and security utilities
   core/               # Configuration, logging, and event definitions
+  dev/                # Local/manual testing helpers that ship with the package
   services/           # Task service, repositories, scheduler client, event processor
   services_container.py
 task_state/           # Reusable task repository, models, and Redis provider
-cli/
-  main.py             # Typer CLI entry point ("dms-frontend" console script)
 examples/
-  external_status_service/  # Minimal worker that reuses the shared Redis repository
+  external_status_service/   # Minimal worker that reuses the shared Redis repository
 tests/
   test_api.py         # Async API tests with a stub repository and stub scheduler
 ```
@@ -94,11 +93,8 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_EVENT_WORKER_COUNT` | `4` | Number of background event workers |
 | `DMS_REQUEST_TIMEOUT_SECONDS` | `10.0` | Scheduler client request timeout |
 | `DMS_LOG_LEVEL` | `INFO` | Application log level |
-| `DMS_LOG_JSON` | `true` | Emit JSON logs (set `false` for local prettiness) |
-| `DMS_CLI_DEFAULT_HOST` | `0.0.0.0` | CLI `serve` host |
-| `DMS_CLI_DEFAULT_PORT` | `8000` | CLI `serve` port |
-| `DMS_CLI_RELOAD` | `false` | Enable autoreload in development |
-Use `dms-frontend show-config` to print the effective configuration at runtime.
+| `DMS_LOG_JSON` | `false` | Emit JSON logs (set `true` for Kubernetes-friendly structured logs) |
+| `DMS_TIMEZONE` | `Asia/Seoul` | Timezone used for task timestamps and log entries |
 
 ## Running the service
 
@@ -108,7 +104,7 @@ Start the API server directly with Uvicorn:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
 ```
 
-Add `--reload` for local hot reloading. The Typer CLI (`dms-frontend` entrypoint or `python -m cli.main`) remains available for helper commands such as inspecting configuration or task metadata.
+Add `--reload` for local hot reloading.
 
 In Kubernetes deployments the JSON logger writes to stdout/stderr so that the platform can aggregate logs.
 
@@ -220,14 +216,6 @@ curl -k -X DELETE "${api_prefix}/admin/tasks/${task_id}" -H "X-Operator-Token: $
 
 # Start the service directly with Uvicorn + TLS
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /dms/ssl-cert/key.pem --ssl-certfile /dms/ssl-cert/cert.pem
-
-# Interact with the API via the Typer CLI helpers (DMS_API_BASE can also be set)
-dms-frontend tasks list --service sync --user alice --api-base "${api_prefix}" --operator-token "${token}"
-dms-frontend tasks status --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
-dms-frontend tasks users --service sync --api-base "${api_prefix}" --operator-token "${token}"
-dms-frontend tasks submit --service sync --user alice --api-base "${api_prefix}" --operator-token "${token}" --param input=value --param mode=fast
-dms-frontend tasks cancel --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
-dms-frontend tasks delete --service sync --task-id "${task_id}" --api-base "${api_prefix}" --user alice --operator-token "${token}"
 ```
 
 ### External status publisher example
@@ -247,36 +235,8 @@ pytest
 
 The suite exercises task submission, cancellation, and operator authentication flows defined in `tests/test_api.py`.
 
-### CLI usage
+For local manual testing against a stub downstream scheduler, run:
 
-The `dms-frontend` Typer CLI is installed with the project and provides shortcuts for inspecting and interacting with the API.
-
-1. Ensure dependencies are installed (e.g., `pip install -e .[dev] --no-build-isolation`).
-2. Set the API base URL (defaults to `https://127.0.0.1:8000/api/v1`):
-
-   ```bash
-   export DMS_API_BASE="https://localhost:8000/api/v1"
-   ```
-
-3. Provide the operator token (required for all API calls except `/help`):
-
-   ```bash
-   export DMS_OPERATOR_TOKEN="<your-token>"
-   ```
-
-4. Run commands such as:
-
-   ```bash
-   # List users who submitted tasks
-   dms-frontend tasks users --service sync
-
-   # Submit a task with custom parameters
-   dms-frontend tasks submit --service sync --user alice --param input=value --param mode=fast
-
-   # Check task status
-   dms-frontend tasks status --service sync --task-id "<task-id>" --user alice
-
-   # Cancel or delete a task
-   dms-frontend tasks cancel --service sync --task-id "<task-id>" --user alice
-   dms-frontend tasks delete --service sync --task-id "<task-id>" --user alice
-   ```
+```bash
+uvicorn app.dev.local_scheduler_stub:app --host 127.0.0.1 --port 9000
+```

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from pythonjsonlogger import json
-
 import signal
 from contextlib import asynccontextmanager
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from pythonjsonlogger import json
 
 
 handler = logging.StreamHandler()
@@ -25,7 +24,7 @@ logger.propagate = False
 
 class _State:
     def __init__(self) -> None:
-        self.tasks: dict[str, Dict[str, Any]] = {}
+        self.tasks: dict[str, dict[str, Any]] = {}
 
 
 state = _State()
@@ -45,8 +44,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="DMS Scheduler Stub", version="0.1.0", lifespan=lifespan)
 
     @app.post("/tasks/task")
-    async def submit_task(payload: Dict[str, Any]) -> JSONResponse:
-        print(f"task: {payload}")
+    async def submit_task(payload: dict[str, Any]) -> JSONResponse:
         task_id = str(
             payload.get("task_id")
             or payload.get("id")
@@ -58,14 +56,14 @@ def create_app() -> FastAPI:
         return JSONResponse({"status": "accepted", "task_id": task_id})
 
     @app.post("/tasks/cancel")
-    async def cancel_task(payload: Dict[str, Any]) -> JSONResponse:
-        print(f"cancel: {payload}")
+    async def cancel_task(payload: dict[str, Any]) -> JSONResponse:
         task_id = payload.get("task_id")
         if not task_id:
             raise HTTPException(status_code=400, detail="task_id is required")
         if task_id not in state.tasks:
             logger.warning(
-                "Received cancellation for unknown task", extra={"task_id": task_id}
+                "Received cancellation for unknown task",
+                extra={"task_id": task_id},
             )
         else:
             state.tasks[task_id]["cancelled"] = True
@@ -101,19 +99,3 @@ def run(host: str = "127.0.0.1", port: int = 9000) -> None:
 
 if __name__ == "__main__":
     run()
-
-
-"""
-curl -X POST "http://127.0.0.1:9000/tasks/task" \
-    -H "Content-Type: application/json" \
-    -d '{"task_id": "1", "service": "sync", "user_id": "alice", "parameters": {"input": "123456"}}' | jq
-
-
-curl -X POST "http://127.0.0.1:9000/tasks/task" \
-    -H "Content-Type: application/json" \
-    -d '{"service": "sync", "user_id": "alice", "parameters": {"input": "hello"}}' | jq
-
-curl -X POST "http://127.0.0.1:9000/tasks/cancel" \
-    -H "Content-Type: application/json" \
-    -d '{"task_id": "1"}' | jq
-"""

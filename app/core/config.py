@@ -32,10 +32,6 @@ class Settings(BaseSettings):
     log_json: bool = False
     access_log_excluded_paths: tuple[str, ...] = ("/healthz",)
 
-    cli_default_host: str = "0.0.0.0"
-    cli_default_port: int = 8000
-    cli_reload: bool = False
-
     # Example: set ``timezone="UTC"`` to record timestamps in UTC
     timezone: str = "Asia/Seoul"
 
