@@ -9,6 +9,7 @@ from app.services.models import (
     TaskIdCursorResponse,
     TaskListResponse,
     TaskStatusResponse,
+    TaskUserListResponse,
 )
 from app.services.tasks import TaskService
 from task_state import TaskStatus
@@ -45,6 +46,15 @@ async def list_service_tasks(
 ) -> TaskListResponse:
     tasks = await task_service.list_service_tasks(service)
     return TaskListResponse(tasks=tasks)
+
+
+@router.get("/services/{service}/users", response_model=TaskUserListResponse)
+async def list_service_users(
+    service: str,
+    task_service: TaskService = Depends(get_task_service),
+) -> TaskUserListResponse:
+    users = await task_service.list_service_users(service)
+    return TaskUserListResponse(users=users)
 
 
 @router.post("/services/{service}/tasks/cancel", response_model=TaskBulkActionResponse)
@@ -99,6 +109,7 @@ async def summarize_service_tasks(
             failed_task_ids=failed_ids,
         )
     )
+
 
 @router.post("/tasks/{task_id}/cancel", response_model=TaskStatusResponse)
 async def cancel_task(

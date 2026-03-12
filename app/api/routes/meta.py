@@ -17,10 +17,12 @@ health_router = APIRouter(tags=["meta"])
 @router.get("/help", response_model=HelpResponse)
 async def help_endpoint() -> HelpResponse:
     return HelpResponse(
-        description="Data Moving Service frontend API (X-Operator-Token required for all endpoints except /help and /healthz)",
+        description=(
+            "Data Moving Service frontend API "
+            "(X-Operator-Token required for /admin endpoints; /services endpoints scoped by user_id are public)"
+        ),
         endpoints=[
             "GET /healthz",
-            "GET /api/v1/services/{service}/users",
             "GET /api/v1/services/{service}/users/{user_id}/tasks",
             "POST /api/v1/services/{service}/users/{user_id}/tasks",
             "POST /api/v1/services/{service}/users/{user_id}/tasks/cancel",
@@ -35,6 +37,7 @@ async def help_endpoint() -> HelpResponse:
             "GET /api/v1/admin/tasks/next-id",
             "POST /api/v1/admin/tasks/{task_id}/cancel",
             "DELETE /api/v1/admin/tasks/{task_id}",
+            "GET /api/v1/admin/services/{service}/users",
             "GET /api/v1/admin/services/{service}/tasks",
             "POST /api/v1/admin/services/{service}/tasks/cancel",
             "DELETE /api/v1/admin/services/{service}/tasks",

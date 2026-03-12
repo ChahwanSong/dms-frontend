@@ -239,35 +239,37 @@ async def test_help_endpoint_is_public(test_app: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_user_routes_require_token(test_app: AsyncClient) -> None:
-    response = await test_app.post("/api/v1/services/sync/users/alice/tasks")
-    assert response.status_code == 401
+async def test_user_routes_with_user_scope_are_public(test_app: AsyncClient) -> None:
+    create_response = await test_app.post("/api/v1/services/sync/users/alice/tasks", params={"input": "value"})
+    assert create_response.status_code == 202
+    task_id = create_response.json()["task_id"]
 
-    response = await test_app.post(
-        "/api/v1/services/sync/users/alice/tasks", params={"input": "value"}, headers=AUTH_HEADERS
-    )
-    assert response.status_code == 202
+    status_response = await test_app.get(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
+    assert status_response.status_code == 200
+
+    service_user_response = await test_app.get("/api/v1/services/sync/users/alice/tasks")
+    assert service_user_response.status_code == 200
+
+    user_response = await test_app.get("/api/v1/services/users/alice/tasks")
+    assert user_response.status_code == 200
+
+    cancel_response = await test_app.post("/api/v1/services/users/alice/tasks/cancel")
+    assert cancel_response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
-    create_response = await test_app.post(
-        "/api/v1/services/sync/users/alice/tasks", params={"input": "value"}, headers=AUTH_HEADERS
-    )
+    create_response = await test_app.post("/api/v1/services/sync/users/alice/tasks", params={"input": "value"})
     assert create_response.status_code == 202
     task_id = create_response.json()["task_id"]
 
     async def _task_running() -> bool:
-        response = await test_app.get(
-            f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}, headers=AUTH_HEADERS
-        )
+        response = await test_app.get(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
         return response.status_code == 200 and response.json()["task"]["status"] in {"running", "completed"}
 
     await wait_for_condition(_task_running)
 
-    status_response = await test_app.get(
-        f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"}, headers=AUTH_HEADERS
-    )
+    status_response = await test_app.get(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
     assert status_response.status_code == 200
     logs = status_response.json()["task"]["logs"]
     assert logs
@@ -275,7 +277,7 @@ async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
     datetime.fromisoformat(timestamp)
     assert message == "Dispatching to scheduler"
 
-    list_response = await test_app.get("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    list_response = await test_app.get("/api/v1/services/sync/users/alice/tasks")
     assert list_response.status_code == 200
     tasks = list_response.json()["tasks"]
     assert len(tasks) == 1
@@ -284,11 +286,11 @@ async def test_user_can_create_and_list_tasks(test_app: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_task_list_responses_are_sorted_by_task_id(test_app: AsyncClient) -> None:
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
 
-    user_response = await test_app.get("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    user_response = await test_app.get("/api/v1/services/sync/users/alice/tasks")
     assert user_response.status_code == 200
     user_task_ids = [task["task_id"] for task in user_response.json()["tasks"]]
     assert user_task_ids == sorted(user_task_ids, key=int)
@@ -310,12 +312,10 @@ async def test_operator_token_required(test_app: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
-    create_response = await test_app.post("/api/v1/services/scan/users/bob/tasks", headers=AUTH_HEADERS)
+    create_response = await test_app.post("/api/v1/services/scan/users/bob/tasks")
     task_id = create_response.json()["task_id"]
 
-    cancel_response = await test_app.post(
-        f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"}, headers=AUTH_HEADERS
-    )
+    cancel_response = await test_app.post(f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"})
     assert cancel_response.status_code == 200
     cancel_task = cancel_response.json()["task"]
     assert any(
@@ -324,12 +324,23 @@ async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
     )
 
     async def _task_cancelled() -> bool:
-        response = await test_app.get(
-            f"/api/v1/services/scan/tasks/{task_id}", params={"user_id": "bob"}, headers=AUTH_HEADERS
-        )
+        response = await test_app.get(f"/api/v1/services/scan/tasks/{task_id}", params={"user_id": "bob"})
         return response.status_code == 200 and response.json()["task"]["status"] == "cancelled"
 
     await wait_for_condition(_task_cancelled)
+
+
+@pytest.mark.asyncio
+async def test_user_can_cleanup_task_without_token(test_app: AsyncClient) -> None:
+    create_response = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    task_id = create_response.json()["task_id"]
+
+    cleanup_response = await test_app.delete(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
+    assert cleanup_response.status_code == 200
+    assert cleanup_response.json()["task"]["task_id"] == task_id
+
+    status_response = await test_app.get(f"/api/v1/services/sync/tasks/{task_id}", params={"user_id": "alice"})
+    assert status_response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -348,9 +359,7 @@ async def test_cancel_request_is_noop_when_already_requested(test_app: AsyncClie
     )
     await repository.save(task)
 
-    cancel_response = await test_app.post(
-        f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"}, headers=AUTH_HEADERS
-    )
+    cancel_response = await test_app.post(f"/api/v1/services/scan/tasks/{task_id}/cancel", params={"user_id": "bob"})
     assert cancel_response.status_code == 200
     cancel_task = cancel_response.json()["task"]
     assert cancel_task["status"] == TaskStatus.CANCEL_REQUESTED.value
@@ -359,12 +368,18 @@ async def test_cancel_request_is_noop_when_already_requested(test_app: AsyncClie
 
 
 @pytest.mark.asyncio
-async def test_service_user_listing(test_app: AsyncClient) -> None:
-    await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    await test_app.post("/api/v1/services/scan/users/charlie/tasks", headers=AUTH_HEADERS)
+async def test_service_user_listing_moved_to_admin(test_app: AsyncClient) -> None:
+    await test_app.post("/api/v1/services/sync/users/bob/tasks")
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    await test_app.post("/api/v1/services/scan/users/charlie/tasks")
 
-    response = await test_app.get("/api/v1/services/sync/users", headers=AUTH_HEADERS)
+    legacy_response = await test_app.get("/api/v1/services/sync/users", headers=AUTH_HEADERS)
+    assert legacy_response.status_code == 404
+
+    unauthorized_response = await test_app.get("/api/v1/admin/services/sync/users")
+    assert unauthorized_response.status_code == 401
+
+    response = await test_app.get("/api/v1/admin/services/sync/users", headers=AUTH_HEADERS)
     assert response.status_code == 200
     assert response.json()["users"] == ["alice", "bob"]
 
@@ -375,7 +390,7 @@ async def test_operator_next_task_id_cursor(test_app: AsyncClient) -> None:
     assert response.status_code == 200
     assert response.json() == {"next_task_id": "1"}
 
-    await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
+    await test_app.post("/api/v1/services/sync/users/alice/tasks")
     response = await test_app.get("/api/v1/admin/tasks/next-id", headers=AUTH_HEADERS)
     assert response.status_code == 200
     assert response.json() == {"next_task_id": "2"}
@@ -383,13 +398,11 @@ async def test_operator_next_task_id_cursor(test_app: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_operator_bulk_service_user_operations(test_app: AsyncClient) -> None:
-    first = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    second = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+    first = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    second = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    await test_app.post("/api/v1/services/sync/users/bob/tasks")
 
-    service_user_cancel = await test_app.post(
-        "/api/v1/services/sync/users/alice/tasks/cancel", headers=AUTH_HEADERS
-    )
+    service_user_cancel = await test_app.post("/api/v1/services/sync/users/alice/tasks/cancel")
     assert service_user_cancel.status_code == 200
     payload = service_user_cancel.json()
     assert payload["matched_count"] == 2
@@ -403,15 +416,11 @@ async def test_operator_bulk_service_user_operations(test_app: AsyncClient) -> N
 
 @pytest.mark.asyncio
 async def test_operator_user_listing_and_service_summary(test_app: AsyncClient) -> None:
-    first = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    second = await test_app.post("/api/v1/services/sync/users/alice/tasks", headers=AUTH_HEADERS)
-    third = await test_app.post("/api/v1/services/sync/users/bob/tasks", headers=AUTH_HEADERS)
+    first = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    second = await test_app.post("/api/v1/services/sync/users/alice/tasks")
+    third = await test_app.post("/api/v1/services/sync/users/bob/tasks")
 
-    await test_app.post(
-        f"/api/v1/services/sync/tasks/{first.json()['task_id']}/cancel",
-        params={"user_id": "alice"},
-        headers=AUTH_HEADERS,
-    )
+    await test_app.post(f"/api/v1/services/sync/tasks/{first.json()['task_id']}/cancel", params={"user_id": "alice"})
 
     provider = services_container.get_redis_provider_instance()
     assert provider is not None
@@ -419,7 +428,7 @@ async def test_operator_user_listing_and_service_summary(test_app: AsyncClient) 
     await repository.set_status(second.json()["task_id"], TaskStatus.COMPLETED)
     await repository.set_status(third.json()["task_id"], TaskStatus.FAILED)
 
-    user_tasks = await test_app.get("/api/v1/services/users/alice/tasks", headers=AUTH_HEADERS)
+    user_tasks = await test_app.get("/api/v1/services/users/alice/tasks")
     assert user_tasks.status_code == 200
     assert len(user_tasks.json()["tasks"]) == 2
 
@@ -431,6 +440,6 @@ async def test_operator_user_listing_and_service_summary(test_app: AsyncClient) 
     assert second.json()["task_id"] in summary_payload["success_task_ids"]
     assert third.json()["task_id"] in summary_payload["failed_task_ids"]
 
-    user_cleanup = await test_app.delete("/api/v1/services/users/alice/tasks", headers=AUTH_HEADERS)
+    user_cleanup = await test_app.delete("/api/v1/services/users/alice/tasks")
     assert user_cleanup.status_code == 200
     assert user_cleanup.json()["matched_count"] == 2

@@ -112,28 +112,28 @@ In Kubernetes deployments the JSON logger writes to stdout/stderr so that the pl
 
 All paths are rooted at `/api/v1` by default.
 
-All endpoints except `/help` and `/healthz` require the `X-Operator-Token` header; this applies to both user-facing and
-operator routes.
+`/admin` endpoints require the `X-Operator-Token` header. `/services` endpoints scoped by `user_id` are public, while
+`/help` and `/healthz` remain public metadata endpoints.
 
 | Method | Path | Description | Auth |
 | --- | --- | --- | --- |
 | GET | `/help` | API overview and endpoint listing | None |
 | GET | `/healthz` | Health probe (includes Redis connectivity) | None |
-| GET | `/services/{service}/users` | List users who submitted tasks for a service | `X-Operator-Token` header |
-| GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | `X-Operator-Token` header |
-| POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | `X-Operator-Token` header |
-| POST | `/services/{service}/users/{user_id}/tasks/cancel` | Cancel all tasks for a specific service+user scope | `X-Operator-Token` header |
-| DELETE | `/services/{service}/users/{user_id}/tasks` | Cleanup (delete) all tasks for a specific service+user scope | `X-Operator-Token` header |
-| GET | `/services/users/{user_id}/tasks` | List all tasks owned by a user across services | `X-Operator-Token` header |
-| POST | `/services/users/{user_id}/tasks/cancel` | Cancel all tasks owned by a user across services | `X-Operator-Token` header |
-| DELETE | `/services/users/{user_id}/tasks` | Cleanup (delete) all tasks owned by a user across services | `X-Operator-Token` header |
-| GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | `X-Operator-Token` header |
-| POST | `/services/{service}/tasks/{task_id}/cancel?user_id=` | Request task cancellation | `X-Operator-Token` header |
-| DELETE | `/services/{service}/tasks/{task_id}?user_id=` | Delete task metadata and logs (user-scoped) | `X-Operator-Token` header |
+| GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | None |
+| POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | None |
+| POST | `/services/{service}/users/{user_id}/tasks/cancel` | Cancel all tasks for a specific service+user scope | None |
+| DELETE | `/services/{service}/users/{user_id}/tasks` | Cleanup (delete) all tasks for a specific service+user scope | None |
+| GET | `/services/users/{user_id}/tasks` | List all tasks owned by a user across services | None |
+| POST | `/services/users/{user_id}/tasks/cancel` | Cancel all tasks owned by a user across services | None |
+| DELETE | `/services/users/{user_id}/tasks` | Cleanup (delete) all tasks owned by a user across services | None |
+| GET | `/services/{service}/tasks/{task_id}?user_id=` | Fetch task status scoped to the user | None |
+| POST | `/services/{service}/tasks/{task_id}/cancel?user_id=` | Request task cancellation | None |
+| DELETE | `/services/{service}/tasks/{task_id}?user_id=` | Delete task metadata and logs (user-scoped) | None |
 | GET | `/admin/tasks` | List all tasks across services | `X-Operator-Token` header |
 | GET | `/admin/tasks/next-id` | Return the next task ID cursor without consuming it | `X-Operator-Token` header |
 | POST | `/admin/tasks/{task_id}/cancel` | Cancel any task | `X-Operator-Token` header |
 | DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs (cancel is requested asynchronously first; metadata is then deleted immediately) | `X-Operator-Token` header |
+| GET | `/admin/services/{service}/users` | List users who submitted tasks for a service | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks` | List tasks for a specific service | `X-Operator-Token` header |
 | POST | `/admin/services/{service}/tasks/cancel` | Cancel all tasks owned by a service | `X-Operator-Token` header |
 | DELETE | `/admin/services/{service}/tasks` | Cleanup (delete) all tasks owned by a service | `X-Operator-Token` header |
@@ -154,42 +154,42 @@ api_prefix="https://localhost:8000/api/v1"
 token="${DMS_OPERATOR_TOKEN:-$(printenv DMS_OPERATOR_TOKEN)}"
 
 # Submit a synchronous task for user "alice"
-curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
+curl -k -X POST "${api_prefix}/services/sync/users/alice/tasks?input=value"
 
 # Submit a task with multiple query params (becomes task inputs)
-curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/users/alice/tasks" \
+curl -k -X POST "${api_prefix}/services/sync/users/alice/tasks" \
   --data "" --get \
   --data-urlencode "src=/home/gpu1" \
   --data-urlencode "dst=/home/cpu1"
 
 # Fetch task status scoped to the user
 task_id="<task-id>"
-curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -k "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # Results (e.g. pod status, combined launcher stdout/stderr output) are returned in the `result` field
-curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
+curl -k "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice" | jq '.task.result'
 
 # List users who submitted sync tasks
-curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users"
+curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/admin/services/sync/users"
 
 # List user tasks
-curl -k -H "X-Operator-Token: ${token}" "${api_prefix}/services/sync/users/alice/tasks"
+curl -k "${api_prefix}/services/sync/users/alice/tasks"
 
 # Cancel a task
-curl -k -H "X-Operator-Token: ${token}" -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
+curl -k -X POST "${api_prefix}/services/sync/tasks/${task_id}/cancel" \
   --data "" --get --data-urlencode "user_id=alice"
 
 # Delete task metadata and logs (user-scoped)
-curl -k -H "X-Operator-Token: ${token}" -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
+curl -k -X DELETE "${api_prefix}/services/sync/tasks/${task_id}?user_id=alice"
 
 # List/cancel/delete every task for one user across services
-curl -k "${api_prefix}/services/users/alice/tasks" -H "X-Operator-Token: ${token}"
-curl -k -X POST "${api_prefix}/services/users/alice/tasks/cancel" -H "X-Operator-Token: ${token}"
-curl -k -X DELETE "${api_prefix}/services/users/alice/tasks" -H "X-Operator-Token: ${token}"
+curl -k "${api_prefix}/services/users/alice/tasks"
+curl -k -X POST "${api_prefix}/services/users/alice/tasks/cancel"
+curl -k -X DELETE "${api_prefix}/services/users/alice/tasks"
 
 # Cancel/delete all tasks for one service+user scope
-curl -k -X POST "${api_prefix}/services/sync/users/alice/tasks/cancel" -H "X-Operator-Token: ${token}"
-curl -k -X DELETE "${api_prefix}/services/sync/users/alice/tasks" -H "X-Operator-Token: ${token}"
+curl -k -X POST "${api_prefix}/services/sync/users/alice/tasks/cancel"
+curl -k -X DELETE "${api_prefix}/services/sync/users/alice/tasks"
 
 # Operator listing with token
 curl -k "${api_prefix}/admin/tasks" -H "X-Operator-Token: ${token}"
