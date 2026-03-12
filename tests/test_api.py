@@ -311,6 +311,16 @@ async def test_operator_token_required(test_app: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_operator_auth_verify_endpoint(test_app: AsyncClient) -> None:
+    response = await test_app.get("/api/v1/admin/auth/verify", headers={"X-Operator-Token": "wrong"})
+    assert response.status_code == 401
+
+    response = await test_app.get("/api/v1/admin/auth/verify", headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"authenticated": True, "role": "operator"}
+
+
+@pytest.mark.asyncio
 async def test_user_can_cancel_task(test_app: AsyncClient) -> None:
     create_response = await test_app.post("/api/v1/services/scan/users/bob/tasks")
     task_id = create_response.json()["task_id"]

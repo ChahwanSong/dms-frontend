@@ -33,6 +33,7 @@ async def help_endpoint() -> HelpResponse:
             "GET /api/v1/services/{service}/tasks/{task_id}?user_id=",
             "POST /api/v1/services/{service}/tasks/{task_id}/cancel?user_id=",
             "DELETE /api/v1/services/{service}/tasks/{task_id}?user_id=",
+            "GET /api/v1/admin/auth/verify",
             "GET /api/v1/admin/tasks",
             "GET /api/v1/admin/tasks/next-id",
             "POST /api/v1/admin/tasks/{task_id}/cancel",

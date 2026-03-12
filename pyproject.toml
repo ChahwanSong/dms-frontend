@@ -26,6 +26,9 @@ dev = [
     "httpx>=0.26",
 ]
 
+[project.scripts]
+dms = "app.cli.main:run"
+
 [tool.setuptools.packages.find]
 include = ["app*", "task_state*"]
 

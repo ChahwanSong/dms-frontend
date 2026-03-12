@@ -7,6 +7,11 @@ from pydantic import BaseModel
 from task_state import TaskRecord, TaskStatus
 
 
+class OperatorAuthResponse(BaseModel):
+    authenticated: Literal[True]
+    role: Literal["operator"]
+
+
 class TaskCreateResult(BaseModel):
     task_id: str
     status: TaskStatus

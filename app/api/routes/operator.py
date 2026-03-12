@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.services.models import (
+    OperatorAuthResponse,
     ServiceTaskStatusSummary,
     ServiceTaskSummaryResponse,
     TaskBulkActionResponse,
@@ -22,6 +23,11 @@ router = APIRouter(
     prefix="/admin",
     dependencies=[Depends(require_operator_token)],
 )
+
+
+@router.get("/auth/verify", response_model=OperatorAuthResponse)
+async def verify_operator_access() -> OperatorAuthResponse:
+    return OperatorAuthResponse(authenticated=True, role="operator")
 
 
 @router.get("/tasks", response_model=TaskListResponse)
