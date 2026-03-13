@@ -4,8 +4,10 @@ import io
 import ssl
 from typing import Any
 
+import httpx
 import pytest
 
+from app.cli.client import DmsApiClient, DmsApiError
 from app.cli.config import CLISettings
 from app.cli.main import main
 from app.cli.shell import AdminShell, KubeShell, UserShell
@@ -207,6 +209,31 @@ def test_cli_settings_builds_ssl_context_from_ca_bundle(monkeypatch: pytest.Monk
 
     assert settings.api_base_url == "https://frontend.example/api/v1"
     assert settings.httpx_verify == sentinel
+
+
+def test_cli_settings_normalizes_frontend_url_when_api_prefix_included() -> None:
+    settings = CLISettings(frontend_url="https://frontend.example/api/v1", api_prefix="/api/v1")
+
+    assert settings.normalized_frontend_url == "https://frontend.example"
+    assert settings.api_base_url == "https://frontend.example/api/v1"
+
+
+def test_client_tls_error_message_recommends_bundle_or_insecure() -> None:
+    settings = CLISettings(frontend_url="https://frontend.example", api_prefix="/api/v1")
+    client = DmsApiClient(settings)
+
+    def raise_tls_error(*args: Any, **kwargs: Any) -> Any:
+        request = httpx.Request("GET", "https://frontend.example/healthz")
+        raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] cert verify failed", request=request)
+
+    client._client.request = raise_tls_error  # type: ignore[method-assign]
+
+    with pytest.raises(DmsApiError) as exc_info:
+        client.health()
+
+    message = str(exc_info.value)
+    assert "DMS_CLI_CA_BUNDLE" in message
+    assert "DMS_CLI_INSECURE=true" in message
 
 
 def test_main_admin_mode_requires_root(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
