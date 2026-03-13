@@ -2,7 +2,7 @@
 
 ## 개요
 
-`dms`는 `dms-frontend` API를 interactive shell 형태로 호출하는 CLI다.
+`dms`는 `dms-frontend` API를 interactive shell 형태로 호출하는 독립 배포형 CLI다.
 
 - `dms`: 현재 사용자의 task를 다루는 user CLI
 - `dms admin`: root + operator token 검증 후 진입하는 admin CLI
@@ -13,6 +13,7 @@ CLI는 HTTPS 기반 `dms-frontend`에 직접 요청하며, tab completion과 명
 ## 설치
 
 ```bash
+cd dms-cli
 pip install -e .
 ```
 
@@ -20,7 +21,7 @@ pip install -e .
 
 ```bash
 dms
-python3 -m app.cli
+python3 -m dms_cli
 ```
 
 ## 환경변수
@@ -203,9 +204,9 @@ dms
 
 ```bash
 pytest tests/test_cli.py tests/test_api.py -q
-python3 -m app.cli --help
-python3 -m app.cli -c "help run"
-python3 -m app.cli kube -c "hello scheduler"
+python3 -m dms_cli --help
+python3 -m dms_cli -c "help run"
+python3 -m dms_cli kube -c "hello scheduler"
 ```
 
 루트 저장소 전체 `pytest -q`는 monorepo의 `app` package 충돌 때문에 적합하지 않다. frontend는 `pytest tests -q`, scheduler는 `cd dms-scheduler && pytest -q`로 분리 실행한다.

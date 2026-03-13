@@ -59,7 +59,7 @@ dms kube
 - 사설 CA 환경을 위해 `DMS_CLI_CA_BUNDLE` 지원
 - 테스트/개발 환경을 위해 `DMS_CLI_INSECURE=true` 지원
 - 패키지 설치 시 `dms` console script가 생성되도록 `pyproject.toml`에 entrypoint 추가
-- `python3 -m app.cli` 실행도 가능하게 구성
+- `python3 -m dms_cli` 실행도 가능하게 구성 (독립 패키지: `dms-cli/`)
 
 ### 2.5 자동완성
 
@@ -92,7 +92,7 @@ dms kube
 
 | 요구사항 | 반영 방식 | 상태 |
 | --- | --- | --- |
-| `dms` user CLI 진입 | `app.cli.main` 기본 모드 | 완료 |
+| `dms` user CLI 진입 | `dms_cli.main` 기본 모드 | 완료 |
 | `dms admin` admin CLI 진입 | argparse 모드 + admin shell | 완료 |
 | admin은 root + token 필요 | `is_root_user()` + token prompt | 완료 |
 | token은 frontend로부터 인증 | `/api/v1/admin/auth/verify` 추가 | 완료 |
@@ -132,9 +132,9 @@ dms kube
 ```bash
 pytest tests/test_cli.py tests/test_api.py -q
 pytest tests -q
-python3 -m app.cli --help
-python3 -m app.cli -c "help run"
-python3 -m app.cli kube -c "hello scheduler"
+python3 -m dms_cli --help
+python3 -m dms_cli -c "help run"
+python3 -m dms_cli kube -c "hello scheduler"
 ```
 
 ### 5.3 저장소 구조상 주의사항
@@ -155,7 +155,7 @@ cd dms-scheduler && pytest -q
 실제 구현 후 다음 self review를 수행했다.
 
 1. CLI unit/integration test 통과 여부 확인
-2. `python3 -m app.cli` smoke test 수행
+2. `python3 -m dms_cli` smoke test 수행
 3. help 출력/argument parser 동작 재검토
 4. 문서와 실제 명령 이름 불일치 여부 점검
 
