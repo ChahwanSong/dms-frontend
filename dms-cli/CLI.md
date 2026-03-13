@@ -31,7 +31,7 @@ python3 -m dms_cli
 | `DMS_FRONTEND_URL` | `https://127.0.0.1:8000` | `dms-frontend` base URL |
 | `DMS_FRONTEND_API_PREFIX` | `/api/v1` | API prefix |
 | `DMS_CLI_CA_BUNDLE` | 없음 | 사설 CA 인증서 bundle 경로 |
-| `DMS_CLI_INSECURE` | `false` | `true`면 TLS 검증 비활성화 |
+| `DMS_CLI_INSECURE` | `true` | `true`면 TLS 검증 비활성화 |
 | `DMS_CLI_TIMEOUT_SECONDS` | `10.0` | 요청 타임아웃(초) |
 
 현재 설정값은 CLI 안에서 `env` 또는 `help env`로 확인할 수 있다.

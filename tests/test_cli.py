@@ -205,7 +205,7 @@ def test_cli_settings_builds_ssl_context_from_ca_bundle(monkeypatch: pytest.Monk
         return sentinel
 
     monkeypatch.setattr(ssl, "create_default_context", fake_create_default_context)
-    settings = CLISettings(frontend_url="https://frontend.example", ca_bundle="/tmp/dms-ca.pem")
+    settings = CLISettings(frontend_url="https://frontend.example", ca_bundle="/tmp/dms-ca.pem", insecure_tls=False)
 
     assert settings.api_base_url == "https://frontend.example/api/v1"
     assert settings.httpx_verify == sentinel
@@ -216,6 +216,13 @@ def test_cli_settings_normalizes_frontend_url_when_api_prefix_included() -> None
 
     assert settings.normalized_frontend_url == "https://frontend.example"
     assert settings.api_base_url == "https://frontend.example/api/v1"
+
+
+def test_cli_settings_insecure_tls_defaults_to_true() -> None:
+    settings = CLISettings(frontend_url="https://frontend.example")
+
+    assert settings.insecure_tls is True
+    assert settings.httpx_verify is False
 
 
 def test_client_tls_error_message_recommends_bundle_or_insecure() -> None:
