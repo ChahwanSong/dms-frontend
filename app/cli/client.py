@@ -16,7 +16,7 @@ class DmsApiClient:
         self.settings = settings
         self.operator_token: str | None = None
         self._client = httpx.Client(
-            base_url=settings.frontend_url.rstrip("/"),
+            base_url=settings.normalized_frontend_url,
             timeout=settings.timeout_seconds,
             verify=settings.httpx_verify,
         )
@@ -121,7 +121,13 @@ class DmsApiClient:
         except httpx.HTTPStatusError as exc:
             raise DmsApiError(self._format_http_error(exc)) from exc
         except httpx.RequestError as exc:
-            raise DmsApiError(f"Request to {exc.request.url} failed: {exc}") from exc
+            message = f"Request to {exc.request.url} failed: {exc}"
+            if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+                message += (
+                    "\nTLS verification failed. Set DMS_CLI_CA_BUNDLE to your CA certificate path, "
+                    "or set DMS_CLI_INSECURE=true for local testing only."
+                )
+            raise DmsApiError(message) from exc
 
         if not response.content:
             return {}

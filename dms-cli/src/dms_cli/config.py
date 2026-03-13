@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ssl
 from typing import Any, Optional, Union
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -33,7 +34,21 @@ class CLISettings(BaseSettings):
 
     @property
     def api_base_url(self) -> str:
-        return f"{self.frontend_url.rstrip('/')}/{self.api_prefix.strip('/')}"
+        return f"{self.normalized_frontend_url.rstrip('/')}/{self.api_prefix.strip('/')}"
+
+    @property
+    def normalized_frontend_url(self) -> str:
+        normalized = self.frontend_url.rstrip("/")
+        prefix = f"/{self.api_prefix.strip('/')}"
+
+        parsed = urlsplit(normalized)
+        if parsed.scheme and parsed.netloc and parsed.path.rstrip("/") == prefix:
+            return urlunsplit((parsed.scheme, parsed.netloc, "", parsed.query, parsed.fragment)).rstrip("/")
+
+        if normalized.endswith(prefix):
+            return normalized[: -len(prefix)].rstrip("/")
+
+        return normalized
 
     @property
     def httpx_verify(self) -> Union[bool, ssl.SSLContext]:
