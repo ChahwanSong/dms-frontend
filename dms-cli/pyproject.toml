@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dms-cli"
+version = "0.1.0"
+description = "Interactive CLI for dms-frontend user/admin APIs"
+authors = [{name = "DMS Team"}]
+readme = "CLI.md"
+requires-python = ">=3.9"
+dependencies = [
+    "httpx>=0.26",
+    "pydantic-settings>=2.2",
+]
+
+[project.scripts]
+dms = "dms_cli.main:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["dms_cli*"]

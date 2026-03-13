@@ -58,11 +58,13 @@ examples/
   external_status_service/   # Minimal worker that reuses the shared Redis repository
 tests/
   test_api.py         # Async API tests with a stub repository and stub scheduler
+dms-cli/              # Independently installable CLI package (`dms`)
 ```
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.11+ (frontend service)
+- Python 3.9+ (for standalone `dms-cli`)
 - Redis cluster (write: `haproxy-redis.dms-redis.svc.cluster.local:6379`, read: `haproxy-redis.dms-redis.svc.cluster.local:6380`)
 - Access to the `dms_scheduler` service inside the Kubernetes cluster
 
@@ -74,6 +76,14 @@ tests/
    ```bash
    pip install -e .[dev]
    ```
+
+3. (Optional) Install the standalone CLI package:
+
+   ```bash
+   pip install -e dms-cli
+   ```
+
+   See `dms-cli/CLI.md` for command usage.
 
 ## Configuration
 
