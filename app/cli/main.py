@@ -5,27 +5,40 @@ import getpass
 import importlib.metadata
 import os
 import sys
+from typing import Protocol
 
 from .client import DmsApiClient, DmsApiError
 from .config import CLISettings
-from .shell import AdminShell, KubeShell, UserShell, resolve_cli_user_id
+from .shell import AdminShell, UserShell, resolve_cli_user_id
+
+CLI_ENV_EPILOG = (
+    "Environment: DMS_FRONTEND_URL, DMS_FRONTEND_API_PREFIX, "
+    "DMS_CLI_CA_BUNDLE, DMS_CLI_INSECURE, DMS_CLI_TIMEOUT_SECONDS"
+)
+
+
+class InteractiveShell(Protocol):
+    intro: str
+
+    def execute_command(self, command: str) -> int:
+        ...
+
+    def cmdloop(self, intro: str | None = None) -> None:
+        ...
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="dms",
         description="Interactive CLI for dms-frontend user/admin APIs.",
-        epilog=(
-            "Environment: DMS_FRONTEND_URL, DMS_FRONTEND_API_PREFIX, "
-            "DMS_CLI_CA_BUNDLE, DMS_CLI_INSECURE, DMS_CLI_TIMEOUT_SECONDS"
-        ),
+        epilog=CLI_ENV_EPILOG,
     )
     parser.add_argument(
         "mode",
         nargs="?",
-        choices=("user", "admin", "kube"),
+        choices=("user", "admin"),
         default="user",
-        help="omit for the user shell, or choose user/admin/kube explicitly",
+        help="omit for the user shell, or choose admin explicitly",
     )
     parser.add_argument(
         "-c",
@@ -68,9 +81,6 @@ def main(argv: list[str] | None = None) -> int:
     settings = CLISettings()
     enable_tab_completion()
 
-    if args.mode == "kube":
-        return run_shell(KubeShell(settings=settings), args.command)
-
     with DmsApiClient(settings) as client:
         if args.mode == "admin":
             if not is_root_user():
@@ -90,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_shell(shell, args.command)
 
 
-def run_shell(shell: UserShell | AdminShell | KubeShell, command: str | None) -> int:
+def run_shell(shell: InteractiveShell, command: str | None) -> int:
     if command:
         return shell.execute_command(command)
 

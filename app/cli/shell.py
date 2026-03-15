@@ -683,8 +683,8 @@ class KubeShell(BaseShell):
         stderr: TextIO | None = None,
     ) -> None:
         super().__init__(client=None, settings=settings, stdout=stdout, stderr=stderr)
-        self.prompt = "dms[kube]> "
-        self.intro = "DMS kube CLI placeholder. Type 'help' for commands."
+        self.prompt = "dms-kube> "
+        self.intro = "DMS-kube CLI placeholder. Type 'help' for commands."
 
     def _shell_help_topics(self) -> dict[str, CommandHelp]:
         return {
@@ -692,7 +692,7 @@ class KubeShell(BaseShell):
                 summary="Placeholder command for the future kube CLI tree.",
                 usage=("hello", "hello <name>"),
                 examples=("hello", "hello scheduler"),
-                notes=("This is a stub so the dms kube entry point is already reserved.",),
+                notes=("This is a stub so the dms-kube entry point is already reserved.",),
             )
         }
 
@@ -700,10 +700,10 @@ class KubeShell(BaseShell):
         tokens = self._split_tokens(arg)
         if tokens is None:
             return
-        target = tokens[0] if tokens else "kube"
+        target = tokens[0] if tokens else "dms-kube"
         self._write_json({"message": f"hello {target}", "mode": "kube"})
         self.last_status = 0
 
     def complete_hello(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del line, begidx, endidx
-        return self._match(["scheduler", "cluster", "kube"], text)
+        return self._match(["scheduler", "cluster", "dms-kube"], text)

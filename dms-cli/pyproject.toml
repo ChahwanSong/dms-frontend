@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 dms = "dms_cli.main:run"
+dms-kube = "dms_cli.kube_main:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]

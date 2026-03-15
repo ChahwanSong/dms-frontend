@@ -58,7 +58,7 @@ examples/
   external_status_service/   # Minimal worker that reuses the shared Redis repository
 tests/
   test_api.py         # Async API tests with a stub repository and stub scheduler
-dms-cli/              # Independently installable CLI package (`dms`)
+dms-cli/              # Independently installable CLI package (`dms`, `dms-kube`)
 ```
 
 ## Prerequisites

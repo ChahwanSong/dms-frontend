@@ -6,7 +6,7 @@
 
 - `dms`: 현재 CLI 실행 사용자의 user scope를 사용하는 user CLI
 - `dms admin`: root + operator token 검증이 필요한 admin CLI
-- `dms kube`: 향후 kube 전용 CLI 확장을 위한 placeholder CLI
+- `dms-kube`: 향후 kube 전용 CLI 확장을 위한 placeholder CLI
 
 ## 2. 설계 요약
 
@@ -32,7 +32,7 @@ dms admin
   env
   help
 
-dms kube
+dms-kube
   hello [name]
   env
   help
@@ -58,7 +58,7 @@ dms kube
 - 기본 API prefix는 `DMS_FRONTEND_API_PREFIX=/api/v1`
 - 사설 CA 환경을 위해 `DMS_CLI_CA_BUNDLE` 지원
 - 테스트/개발 환경을 위해 `DMS_CLI_INSECURE=true` 지원
-- 패키지 설치 시 `dms` console script가 생성되도록 `pyproject.toml`에 entrypoint 추가
+- 패키지 설치 시 `dms`, `dms-kube` console script가 생성되도록 `pyproject.toml`에 entrypoint 추가
 - `python3 -m dms_cli` 실행도 가능하게 구성 (독립 패키지: `dms-cli/`)
 
 ### 2.5 자동완성
@@ -96,7 +96,7 @@ dms kube
 | `dms admin` admin CLI 진입 | argparse 모드 + admin shell | 완료 |
 | admin은 root + token 필요 | `is_root_user()` + token prompt | 완료 |
 | token은 frontend로부터 인증 | `/api/v1/admin/auth/verify` 추가 | 완료 |
-| `dms kube` placeholder | `KubeShell.hello` 구현 | 완료 |
+| `dms-kube` placeholder | `KubeShell.hello` 구현 | 완료 |
 | user_id는 실제 CLI 사용자 | `resolve_cli_user_id()` | 완료 |
 | help 필수 | `help`, `help <command>`, `env` | 완료 |
 | API hierarchy 반영 | user/admin shell command tree 분리 | 완료 |
@@ -134,7 +134,7 @@ pytest tests/test_cli.py tests/test_api.py -q
 pytest tests -q
 python3 -m dms_cli --help
 python3 -m dms_cli -c "help run"
-python3 -m dms_cli kube -c "hello scheduler"
+python3 -m dms_cli.kube_main -c "hello scheduler"
 ```
 
 ### 5.3 저장소 구조상 주의사항
@@ -163,7 +163,7 @@ cd dms-scheduler && pytest -q
 
 - `dms -c "..."`가 실패하던 parser 기본값 버그 수정
   - 원인: 기본 모드를 `user`로 두고 `argparse choices`에는 `user`를 포함하지 않았음
-  - 조치: `choices=("user", "admin", "kube")`로 수정하고 테스트 추가
+  - 조치: `choices=("user", "admin")`로 수정하고 테스트 추가
 
 ## 7. 후속 개선 후보
 

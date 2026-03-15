@@ -9,6 +9,7 @@ import pytest
 
 from app.cli.client import DmsApiClient, DmsApiError
 from app.cli.config import CLISettings
+from app.cli.kube_main import main as kube_main
 from app.cli.main import main
 from app.cli.shell import AdminShell, KubeShell, UserShell
 
@@ -194,6 +195,7 @@ def test_kube_shell_hello_placeholder() -> None:
     status = shell.execute_command("hello scheduler")
 
     assert status == 0
+    assert shell.prompt == "dms-kube> "
     assert "scheduler" in stdout.getvalue()
 
 
@@ -280,3 +282,19 @@ def test_main_user_mode_runs_without_explicit_mode(monkeypatch: pytest.MonkeyPat
     captured = capsys.readouterr()
     assert status == 0
     assert "run <service> [key=value ...]" in captured.out
+
+
+def test_main_rejects_legacy_kube_mode() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["kube", "-c", "hello scheduler"])
+
+    assert exc_info.value.code == 2
+
+
+def test_kube_main_runs_placeholder_shell(capsys: pytest.CaptureFixture[str]) -> None:
+    status = kube_main(["-c", "hello scheduler"])
+
+    captured = capsys.readouterr()
+    assert status == 0
+    assert '"mode": "kube"' in captured.out
+    assert "scheduler" in captured.out

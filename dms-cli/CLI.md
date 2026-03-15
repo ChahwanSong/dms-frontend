@@ -6,7 +6,7 @@
 
 - `dms`: 현재 사용자의 task를 다루는 user CLI
 - `dms admin`: root + operator token 검증 후 진입하는 admin CLI
-- `dms kube`: 향후 kube 전용 기능을 위한 placeholder CLI
+- `dms-kube`: 향후 kube 전용 기능을 위한 placeholder CLI
 
 CLI는 HTTPS 기반 `dms-frontend`에 직접 요청하며, tab completion과 명령별 help를 제공한다.
 
@@ -17,10 +17,11 @@ cd dms-cli
 pip install -e .
 ```
 
-설치 후 다음 둘 중 하나로 실행할 수 있다.
+설치 후 다음 셋 중 하나로 실행할 수 있다.
 
 ```bash
 dms
+dms-kube
 python3 -m dms_cli
 ```
 
@@ -72,7 +73,7 @@ dms
 dms -c "list"
 dms -c "run sync src=/home/gpu1/data dst=/pvs/archive options='--delete --direct'"
 dms admin -c "list tasks"
-dms kube -c "hello scheduler"
+dms-kube -c "hello scheduler"
 ```
 
 ## User CLI 명령
@@ -161,8 +162,8 @@ sudo dms admin -c "delete service rm"
 현재는 placeholder만 있다.
 
 ```bash
-dms kube -c "hello"
-dms kube -c "hello scheduler"
+dms-kube -c "hello"
+dms-kube -c "hello scheduler"
 ```
 
 ## Help 와 자동완성
@@ -206,7 +207,7 @@ dms
 pytest tests/test_cli.py tests/test_api.py -q
 python3 -m dms_cli --help
 python3 -m dms_cli -c "help run"
-python3 -m dms_cli kube -c "hello scheduler"
+python3 -m dms_cli.kube_main -c "hello scheduler"
 ```
 
 루트 저장소 전체 `pytest -q`는 monorepo의 `app` package 충돌 때문에 적합하지 않다. frontend는 `pytest tests -q`, scheduler는 `cd dms-scheduler && pytest -q`로 분리 실행한다.
