@@ -24,7 +24,7 @@ class CLISettings(BaseSettings):
         validation_alias=AliasChoices("DMS_CLI_CA_BUNDLE", "dms_cli_ca_bundle"),
     )
     insecure_tls: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("DMS_CLI_INSECURE", "dms_cli_insecure"),
     )
     timeout_seconds: float = Field(
