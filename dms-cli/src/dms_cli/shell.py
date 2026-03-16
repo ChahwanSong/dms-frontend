@@ -7,7 +7,7 @@ import pwd
 import shlex
 import sys
 from dataclasses import dataclass
-from typing import Any, Optional, Union, TextIO
+from typing import Any, Callable, TextIO
 
 from .client import DmsApiError
 from .config import CLISettings
@@ -43,9 +43,9 @@ class BaseShell(cmd.Cmd):
         self,
         *,
         settings: CLISettings,
-        client: Optional[Any] = None,
-        stdout: Optional[TextIO] = None,
-        stderr: Optional[TextIO] = None,
+        client: Any | None = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
     ) -> None:
         super().__init__(completekey="tab", stdout=stdout)
         self.settings = settings
@@ -201,7 +201,7 @@ class BaseShell(cmd.Cmd):
         self._write_json(payload)
         self.last_status = 0
 
-    def _parse_key_value_arguments(self, tokens: list[str]) -> Optional[dict[str, str]]:
+    def _parse_key_value_arguments(self, tokens: list[str]) -> dict[str, str] | None:
         parameters: dict[str, str] = {}
         for token in tokens:
             if "=" not in token:
@@ -214,7 +214,7 @@ class BaseShell(cmd.Cmd):
             parameters[key] = value
         return parameters
 
-    def _split_tokens(self, arg: str) -> Optional[list[str]]:
+    def _split_tokens(self, arg: str) -> list[str] | None:
         try:
             return shlex.split(arg)
         except ValueError as exc:
@@ -233,7 +233,7 @@ class BaseShell(cmd.Cmd):
             tokens.append("")
         return tokens
 
-    def _parse_completion_request(self, line: str) -> Optional[tuple[str, str, int, int]]:
+    def _parse_completion_request(self, line: str) -> tuple[str, str, int, int] | None:
         stripped = line.lstrip()
         if not stripped:
             return None
@@ -260,7 +260,152 @@ class BaseShell(cmd.Cmd):
     def _write_json(self, payload: dict[str, Any]) -> None:
         self._write(json.dumps(payload, indent=2, sort_keys=True))
 
-    def _match(self, options: Union[list[str], tuple[str, ...]], text: str) -> list[str]:
+    def _write_task_table(self, tasks: list[dict[str, Any]]) -> None:
+        headers = ["task_id", "service", "status", "priority", "created_at", "updated_at", "parameters"]
+        max_widths = {
+            "task_id": 12,
+            "service": 12,
+            "status": 12,
+            "priority": 10,
+            "created_at": 32,
+            "updated_at": 32,
+            "parameters": 80,
+        }
+
+        def _cell(value: Any, *, max_width: int) -> str:
+            text = self._stringify_cell_value(value)
+            if len(text) > max_width:
+                return f"{text[: max_width - 3]}..."
+            return text
+
+        rows = [
+            {
+                "task_id": _cell(task.get("task_id"), max_width=max_widths["task_id"]),
+                "service": _cell(task.get("service"), max_width=max_widths["service"]),
+                "status": _cell(task.get("status"), max_width=max_widths["status"]),
+                "priority": _cell(task.get("priority"), max_width=max_widths["priority"]),
+                "created_at": _cell(task.get("created_at"), max_width=max_widths["created_at"]),
+                "updated_at": _cell(task.get("updated_at"), max_width=max_widths["updated_at"]),
+                "parameters": _cell(task.get("parameters"), max_width=max_widths["parameters"]),
+            }
+            for task in tasks
+            if isinstance(task, dict)
+        ]
+
+        widths = {
+            header: max(len(header), *(len(row[header]) for row in rows))
+            for header in headers
+        }
+        separator = "+" + "+".join("-" * (widths[header] + 2) for header in headers) + "+"
+        header_row = "| " + " | ".join(header.ljust(widths[header]) for header in headers) + " |"
+
+        self._write(separator)
+        self._write(header_row)
+        self._write(separator)
+        for row in rows:
+            rendered = "| " + " | ".join(row[header].ljust(widths[header]) for header in headers) + " |"
+            self._write(rendered)
+        self._write(separator)
+
+    def _stringify_cell_value(self, value: Any) -> str:
+        if value is None:
+            return "-"
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return str(value)
+
+
+    def _parse_task_id_selector(self, selector: str) -> list[str] | None:
+        raw = selector.strip()
+        if not raw:
+            self._error("Task ID selector cannot be empty.")
+            return None
+
+        if raw.startswith("[") or raw.endswith("]"):
+            if not (raw.startswith("[") and raw.endswith("]")):
+                self._error("Invalid task_id selector format. Brackets must wrap the whole selector.")
+                return None
+            raw = raw[1:-1].strip()
+            if not raw:
+                self._error("Task ID selector cannot be empty.")
+                return None
+
+        task_ids: list[str] = []
+        seen: set[str] = set()
+        for part in raw.split(","):
+            item = part.strip()
+            if not item:
+                self._error(f"Invalid task_id selector: {selector}")
+                return None
+            if "-" in item:
+                range_parts = item.split("-")
+                if len(range_parts) != 2 or not range_parts[0].strip() or not range_parts[1].strip():
+                    self._error(f"Invalid task_id range: {item}")
+                    return None
+                start_text, end_text = range_parts[0].strip(), range_parts[1].strip()
+                if not start_text.isdigit() or not end_text.isdigit():
+                    self._error(f"Task IDs must be integers: {item}")
+                    return None
+                start, end = int(start_text), int(end_text)
+                if start <= 0 or end <= 0:
+                    self._error(f"Task IDs must be positive integers: {item}")
+                    return None
+                if start > end:
+                    self._error(f"Invalid task_id range (start > end): {item}")
+                    return None
+                for task_id in range(start, end + 1):
+                    task_id_text = str(task_id)
+                    if task_id_text not in seen:
+                        seen.add(task_id_text)
+                        task_ids.append(task_id_text)
+                continue
+
+            if not item.isdigit():
+                self._error(f"Task IDs must be integers: {item}")
+                return None
+            value = int(item)
+            if value <= 0:
+                self._error(f"Task IDs must be positive integers: {item}")
+                return None
+            task_id_text = str(value)
+            if task_id_text not in seen:
+                seen.add(task_id_text)
+                task_ids.append(task_id_text)
+
+        if not task_ids:
+            self._error("Task ID selector cannot be empty.")
+            return None
+        return task_ids
+
+    def _emit_task_id_batch(
+        self,
+        *,
+        task_ids: list[str],
+        request_factory: Callable[[str], dict[str, Any]],
+    ) -> None:
+        results: list[dict[str, Any]] = []
+        errors: list[dict[str, str]] = []
+
+        for task_id in task_ids:
+            try:
+                payload = request_factory(task_id)
+            except DmsApiError as exc:
+                errors.append({"task_id": task_id, "error": str(exc)})
+                continue
+            results.append({"task_id": task_id, "result": payload})
+
+        response: dict[str, Any] = {
+            "requested_task_ids": task_ids,
+            "results": results,
+        }
+        if errors:
+            response["errors"] = errors
+            self.last_status = 1
+        else:
+            self.last_status = 0
+        self._write_json(response)
+
+    def _match(self, options: list[str] | tuple[str, ...], text: str) -> list[str]:
         return [option for option in options if option.startswith(text)]
 
 
@@ -271,8 +416,8 @@ class UserShell(BaseShell):
         client: Any,
         settings: CLISettings,
         user_id: str,
-        stdout: Optional[TextIO] = None,
-        stderr: Optional[TextIO] = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
     ) -> None:
         super().__init__(client=client, settings=settings, stdout=stdout, stderr=stderr)
         self.user_id = user_id
@@ -286,16 +431,28 @@ class UserShell(BaseShell):
         return {
             "list": CommandHelp(
                 summary="List your tasks across services or within one service.",
-                usage=("list", "list mine", "list service <service>"),
+                usage=(
+                    "list",
+                    "list mine",
+                    "list brief",
+                    "list mine brief",
+                    "list service <service>",
+                    "list service <service> brief",
+                ),
                 api_routes=(
                     "GET /api/v1/services/users/{user_id}/tasks",
                     "GET /api/v1/services/{service}/users/{user_id}/tasks",
                 ),
                 examples=(
                     "list",
+                    "list brief",
                     "list service sync",
+                    "list service sync brief",
                 ),
-                notes=("The CLI always uses the current login user as user_id.",),
+                notes=(
+                    "The CLI always uses the current login user as user_id.",
+                    "Add 'brief' to render task rows as a compact table instead of raw JSON.",
+                ),
             ),
             "run": CommandHelp(
                 summary="Submit a new task under the current user scope.",
@@ -313,13 +470,14 @@ class UserShell(BaseShell):
             ),
             "get": CommandHelp(
                 summary="Fetch one task's status, logs, and result payload.",
-                usage=("get <service> <task_id>",),
+                usage=("get <service> <task_id|task_id_selector>",),
                 api_routes=("GET /api/v1/services/{service}/tasks/{task_id}?user_id=",),
-                examples=("get sync 10",),
+                examples=("get sync 10", "get sync [1-3,8]"),
+                notes=("task_id supports selectors like 1,2,3 | [1-3,8] | [1-6].",),
             ),
             "cancel": CommandHelp(
                 summary="Cancel one task, one service scope, or all of your tasks.",
-                usage=("cancel mine", "cancel service <service>", "cancel task <service> <task_id>"),
+                usage=("cancel mine", "cancel service <service>", "cancel task <service> <task_id|task_id_selector>"),
                 api_routes=(
                     "POST /api/v1/services/users/{user_id}/tasks/cancel",
                     "POST /api/v1/services/{service}/users/{user_id}/tasks/cancel",
@@ -329,11 +487,13 @@ class UserShell(BaseShell):
                     "cancel mine",
                     "cancel service sync",
                     "cancel task sync 10",
+                    "cancel task sync [1-3,5]",
                 ),
+                notes=("task_id supports selectors like 1,2,3 | [1-3,8] | [1-6].",),
             ),
             "delete": CommandHelp(
                 summary="Delete one task or clean up task metadata in a broader user scope.",
-                usage=("delete mine", "delete service <service>", "delete task <service> <task_id>"),
+                usage=("delete mine", "delete service <service>", "delete task <service> <task_id|task_id_selector>"),
                 api_routes=(
                     "DELETE /api/v1/services/users/{user_id}/tasks",
                     "DELETE /api/v1/services/{service}/users/{user_id}/tasks",
@@ -343,8 +503,12 @@ class UserShell(BaseShell):
                     "delete mine",
                     "delete service rm",
                     "delete task sync 10",
+                    "delete task sync [1-3,5]",
                 ),
-                notes=("Delete removes stored task metadata/logs from dms-frontend state.",),
+                notes=(
+                    "Delete removes stored task metadata/logs from dms-frontend state.",
+                    "task_id supports selectors like 1,2,3 | [1-3,8] | [1-6].",
+                ),
             ),
         }
 
@@ -355,21 +519,47 @@ class UserShell(BaseShell):
         tokens = self._split_tokens(arg)
         if tokens is None:
             return
-        if not tokens or tokens == ["mine"]:
-            self._emit_api_result(lambda: self.client.list_tasks_by_user(self.user_id))
+        brief = "brief" in tokens
+        filtered_tokens = [token for token in tokens if token != "brief"]
+
+        if not filtered_tokens or filtered_tokens == ["mine"]:
+            self._emit_user_list_result(lambda: self.client.list_tasks_by_user(self.user_id), brief)
             return
-        if len(tokens) == 2 and tokens[0] == "service":
-            self._emit_api_result(lambda: self.client.list_user_tasks(tokens[1], self.user_id))
+        if len(filtered_tokens) == 2 and filtered_tokens[0] == "service":
+            self._emit_user_list_result(
+                lambda: self.client.list_user_tasks(filtered_tokens[1], self.user_id),
+                brief,
+            )
             return
-        self._error("Usage: list | list mine | list service <service>")
+        self._error("Usage: list [mine] [brief] | list service <service> [brief]")
+
+    def _emit_user_list_result(self, request: Any, brief: bool) -> None:
+        try:
+            payload = request()
+        except DmsApiError as exc:
+            self._error(str(exc))
+            return
+        if brief:
+            tasks = payload.get("tasks", []) if isinstance(payload, dict) else []
+            if not isinstance(tasks, list):
+                self._error("Invalid API response: expected 'tasks' list.")
+                return
+            self._write_task_table(tasks)
+        else:
+            self._write_json(payload)
+        self.last_status = 0
 
     def complete_list(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
         words = self._split_completion_words(line)
         if len(words) <= 1:
-            return self._match(["mine", "service"], text)
+            return self._match(["mine", "service", "brief"], text)
+        if words[0] in {"mine", "brief"} and len(words) == 2:
+            return self._match([word for word in ["mine", "brief"] if word not in words], text)
         if words[0] == "service" and len(words) == 2:
             return self._match(self._suggest_services(), text)
+        if words[0] == "service" and len(words) == 3:
+            return self._match(["brief"], text)
         return []
 
     def do_run(self, arg: str) -> None:
@@ -398,10 +588,19 @@ class UserShell(BaseShell):
         if tokens is None:
             return
         if len(tokens) != 2:
-            self._error("Usage: get <service> <task_id>")
+            self._error("Usage: get <service> <task_id|task_id_selector>")
             return
-        service, task_id = tokens
-        self._emit_api_result(lambda: self.client.get_task_status(service, task_id, self.user_id))
+        service, task_id_selector = tokens
+        task_ids = self._parse_task_id_selector(task_id_selector)
+        if task_ids is None:
+            return
+        if len(task_ids) == 1:
+            self._emit_api_result(lambda: self.client.get_task_status(service, task_ids[0], self.user_id))
+            return
+        self._emit_task_id_batch(
+            task_ids=task_ids,
+            request_factory=lambda task_id: self.client.get_task_status(service, task_id, self.user_id),
+        )
 
     def complete_get(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
@@ -423,10 +622,19 @@ class UserShell(BaseShell):
             self._emit_api_result(lambda: self.client.cancel_service_user_tasks(tokens[1], self.user_id))
             return
         if len(tokens) == 3 and tokens[0] == "task":
-            _, service, task_id = tokens
-            self._emit_api_result(lambda: self.client.cancel_task(service, task_id, self.user_id))
+            _, service, task_id_selector = tokens
+            task_ids = self._parse_task_id_selector(task_id_selector)
+            if task_ids is None:
+                return
+            if len(task_ids) == 1:
+                self._emit_api_result(lambda: self.client.cancel_task(service, task_ids[0], self.user_id))
+                return
+            self._emit_task_id_batch(
+                task_ids=task_ids,
+                request_factory=lambda task_id: self.client.cancel_task(service, task_id, self.user_id),
+            )
             return
-        self._error("Usage: cancel mine | cancel service <service> | cancel task <service> <task_id>")
+        self._error("Usage: cancel mine | cancel service <service> | cancel task <service> <task_id|task_id_selector>")
 
     def complete_cancel(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
@@ -453,10 +661,19 @@ class UserShell(BaseShell):
             self._emit_api_result(lambda: self.client.cleanup_service_user_tasks(tokens[1], self.user_id))
             return
         if len(tokens) == 3 and tokens[0] == "task":
-            _, service, task_id = tokens
-            self._emit_api_result(lambda: self.client.cleanup_task(service, task_id, self.user_id))
+            _, service, task_id_selector = tokens
+            task_ids = self._parse_task_id_selector(task_id_selector)
+            if task_ids is None:
+                return
+            if len(task_ids) == 1:
+                self._emit_api_result(lambda: self.client.cleanup_task(service, task_ids[0], self.user_id))
+                return
+            self._emit_task_id_batch(
+                task_ids=task_ids,
+                request_factory=lambda task_id: self.client.cleanup_task(service, task_id, self.user_id),
+            )
             return
-        self._error("Usage: delete mine | delete service <service> | delete task <service> <task_id>")
+        self._error("Usage: delete mine | delete service <service> | delete task <service> <task_id|task_id_selector>")
 
     def complete_delete(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
@@ -498,7 +715,7 @@ class UserShell(BaseShell):
         return sorted(task_ids, key=self._task_sort_key)
 
     @staticmethod
-    def _task_sort_key(task_id: str) -> tuple[int, Union[int, str]]:
+    def _task_sort_key(task_id: str) -> tuple[int, int | str]:
         if task_id.isdigit():
             return (0, int(task_id))
         return (1, task_id)
@@ -510,8 +727,8 @@ class AdminShell(BaseShell):
         *,
         client: Any,
         settings: CLISettings,
-        stdout: Optional[TextIO] = None,
-        stderr: Optional[TextIO] = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
     ) -> None:
         super().__init__(client=client, settings=settings, stdout=stdout, stderr=stderr)
         self.prompt = "dms[admin]> "
@@ -551,29 +768,33 @@ class AdminShell(BaseShell):
             ),
             "cancel": CommandHelp(
                 summary="Cancel one task or all tasks owned by a service.",
-                usage=("cancel task <task_id>", "cancel service <service>"),
+                usage=("cancel task <task_id|task_id_selector>", "cancel service <service>"),
                 api_routes=(
                     "POST /api/v1/admin/tasks/{task_id}/cancel",
                     "POST /api/v1/admin/services/{service}/tasks/cancel",
                 ),
                 examples=(
                     "cancel task 10",
+                    "cancel task [1-3,5]",
                     "cancel service hotcold",
                 ),
+                notes=("task_id supports selectors like 1,2,3 | [1-3,8] | [1-6].",),
             ),
             "delete": CommandHelp(
                 summary="Delete task metadata for one task or for an entire service.",
-                usage=("delete task <task_id>", "delete service <service>"),
+                usage=("delete task <task_id|task_id_selector>", "delete service <service>"),
                 api_routes=(
                     "DELETE /api/v1/admin/tasks/{task_id}",
                     "DELETE /api/v1/admin/services/{service}/tasks",
                 ),
                 examples=(
                     "delete task 10",
+                    "delete task [1-3,5]",
                     "delete service rm",
                 ),
                 notes=(
                     "Deleting an admin task removes metadata immediately after issuing an asynchronous cancel request.",
+                    "task_id supports selectors like 1,2,3 | [1-3,8] | [1-6].",
                 ),
             ),
         }
@@ -636,12 +857,21 @@ class AdminShell(BaseShell):
         if tokens is None:
             return
         if len(tokens) == 2 and tokens[0] == "task":
-            self._emit_api_result(lambda: self.client.cancel_admin_task(tokens[1]))
+            task_ids = self._parse_task_id_selector(tokens[1])
+            if task_ids is None:
+                return
+            if len(task_ids) == 1:
+                self._emit_api_result(lambda: self.client.cancel_admin_task(task_ids[0]))
+                return
+            self._emit_task_id_batch(
+                task_ids=task_ids,
+                request_factory=lambda task_id: self.client.cancel_admin_task(task_id),
+            )
             return
         if len(tokens) == 2 and tokens[0] == "service":
             self._emit_api_result(lambda: self.client.cancel_service_tasks(tokens[1]))
             return
-        self._error("Usage: cancel task <task_id> | cancel service <service>")
+        self._error("Usage: cancel task <task_id|task_id_selector> | cancel service <service>")
 
     def complete_cancel(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
@@ -657,12 +887,21 @@ class AdminShell(BaseShell):
         if tokens is None:
             return
         if len(tokens) == 2 and tokens[0] == "task":
-            self._emit_api_result(lambda: self.client.cleanup_admin_task(tokens[1]))
+            task_ids = self._parse_task_id_selector(tokens[1])
+            if task_ids is None:
+                return
+            if len(task_ids) == 1:
+                self._emit_api_result(lambda: self.client.cleanup_admin_task(task_ids[0]))
+                return
+            self._emit_task_id_batch(
+                task_ids=task_ids,
+                request_factory=lambda task_id: self.client.cleanup_admin_task(task_id),
+            )
             return
         if len(tokens) == 2 and tokens[0] == "service":
             self._emit_api_result(lambda: self.client.cleanup_service_tasks(tokens[1]))
             return
-        self._error("Usage: delete task <task_id> | delete service <service>")
+        self._error("Usage: delete task <task_id|task_id_selector> | delete service <service>")
 
     def complete_delete(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
@@ -679,8 +918,8 @@ class KubeShell(BaseShell):
         self,
         *,
         settings: CLISettings,
-        stdout: Optional[TextIO] = None,
-        stderr: Optional[TextIO] = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
     ) -> None:
         super().__init__(client=None, settings=settings, stdout=stdout, stderr=stderr)
         self.prompt = "dms-kube> "
