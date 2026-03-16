@@ -152,6 +152,81 @@ def test_user_shell_run_command_forwards_query_params() -> None:
     assert '"task_id": "42"' in stdout.getvalue()
 
 
+
+
+def test_user_shell_list_brief_renders_task_table() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command("list brief")
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert "| task_id" in output
+    assert "| 10" in output
+    assert '"service": "sync"' not in output
+
+
+def test_user_shell_list_brief_completion_includes_brief_modifier() -> None:
+    shell = UserShell(client=FakeClient(), settings=make_settings(), user_id="alice", stdout=io.StringIO())
+
+    root_suggestions = shell.get_completion_suggestions("list ")
+    service_modifier_suggestions = shell.get_completion_suggestions("list service sync ")
+
+    assert "brief" in root_suggestions
+    assert "brief" in service_modifier_suggestions
+
+
+
+
+def test_user_shell_get_supports_task_id_selector_batch() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command("get sync [1-3,5]")
+
+    assert status == 0
+    expected_calls = [
+        ("get_task_status", "sync", "1", "alice"),
+        ("get_task_status", "sync", "2", "alice"),
+        ("get_task_status", "sync", "3", "alice"),
+        ("get_task_status", "sync", "5", "alice"),
+    ]
+    for call in expected_calls:
+        assert call in client.calls
+    output = stdout.getvalue()
+    assert '"requested_task_ids": [' in output
+
+
+def test_user_shell_rejects_invalid_task_id_selector() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout, stderr=stderr)
+
+    status = shell.execute_command("get sync [1-a]")
+
+    assert status == 1
+    assert "Task IDs must be integers" in stderr.getvalue()
+    assert not any(call[0] == "get_task_status" for call in client.calls)
+
+
+def test_admin_shell_cancel_supports_task_id_selector_batch() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = AdminShell(client=client, settings=make_settings(), stdout=stdout)
+
+    status = shell.execute_command("cancel task 1,2,3")
+
+    assert status == 0
+    assert ("cancel_admin_task", "1") in client.calls
+    assert ("cancel_admin_task", "2") in client.calls
+    assert ("cancel_admin_task", "3") in client.calls
+    assert '"requested_task_ids": [' in stdout.getvalue()
+
+
 def test_user_shell_help_env_mentions_frontend_env_and_tls() -> None:
     stdout = io.StringIO()
     shell = UserShell(client=FakeClient(), settings=make_settings(), user_id="alice", stdout=stdout)

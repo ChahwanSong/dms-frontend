@@ -83,30 +83,38 @@ dms-kube -c "hello scheduler"
 ```text
 list
 list mine
+list brief
+list mine brief
 list service <service>
+list service <service> brief
 
 run <service> [key=value ...]
 
-get <service> <task_id>
+get <service> <task_id|task_id_selector>
 
 cancel mine
 cancel service <service>
-cancel task <service> <task_id>
+cancel task <service> <task_id|task_id_selector>
 
 delete mine
 delete service <service>
-delete task <service> <task_id>
+delete task <service> <task_id|task_id_selector>
 
 health
 env
 help
 ```
 
+task_id selector 형식: `1,2,3`, `[1-3,5]`, `[1-6]`
+
 ### 예시
 
 ```bash
 # 현재 사용자 기준 전체 task 조회
 dms -c "list"
+
+# 간략 테이블 형태로 조회
+dms -c "list brief"
 
 # sync task 실행
 dms -c "run sync src=/home/gpu1/data dst=/pvs/archive options='--delete --direct'"
@@ -116,6 +124,9 @@ dms -c "run rm path=/home/gpu1/tmp/old-data"
 
 # 특정 task 상태 확인
 dms -c "get sync 10"
+
+# task_id selector로 여러 task 조회
+dms -c "get sync [1-3,5]"
 
 # 특정 service 범위 전체 취소
 dms -c "cancel service sync"
@@ -136,16 +147,18 @@ list service <service> users
 
 summary service <service>
 
-cancel task <task_id>
+cancel task <task_id|task_id_selector>
 cancel service <service>
 
-delete task <task_id>
+delete task <task_id|task_id_selector>
 delete service <service>
 
 health
 env
 help
 ```
+
+task_id selector 형식: `1,2,3`, `[1-3,5]`, `[1-6]`
 
 ### 예시
 
@@ -173,6 +186,7 @@ dms-kube -c "hello scheduler"
 - `help env`: 주소/TLS/timeout 관련 환경변수 설명
 - `Tab`: 정적 command/subcommand completion
 - user CLI에서는 service 이름과 task id 동적 completion도 제공
+- `list`는 `brief` modifier를 지원하며 compact table 형태로 출력 가능
 
 예시:
 
