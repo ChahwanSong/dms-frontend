@@ -14,6 +14,7 @@ users and operators.
 - [Running the service](#running-the-service)
 - [API reference](#api-reference)
 - [Usage examples](#usage-examples)
+- [Redis index consistency check](#redis-index-consistency-check)
 - [Testing](#testing)
 
 ## Architecture overview
@@ -234,6 +235,24 @@ The `task_state` package can be reused by other services to write task updates a
 cluster. The `examples/external_status_service` project provides a minimal asyncio worker that registers a task,
 publishes lifecycle events, and appends execution logs using the shared repository helper. Install it in editable
 mode alongside the main service to experiment with multi-project integrations.
+
+## Redis index consistency check
+
+If `list brief` and `list service <service> brief` return different task counts for the same user, run the Redis
+index consistency checker:
+
+```bash
+python scripts/redis_index_consistency_check.py --user-id <user_id> --redis-url "${DMS_REDIS_WRITE_URL}"
+```
+
+To apply repair (`index:user:<user_id>` backfill/prune):
+
+```bash
+python scripts/redis_index_consistency_check.py --user-id <user_id> --redis-url "${DMS_REDIS_WRITE_URL}" --repair
+```
+
+For step-by-step operating instructions (dry-run, interpretation, repair, verification), see:
+`docs/operations/redis-index-consistency-check.md`.
 
 ## Testing
 
