@@ -62,6 +62,13 @@ class BaseShell(cmd.Cmd):
         self.onecmd(line)
         return self.last_status
 
+    def onecmd(self, line: str) -> bool | None:
+        try:
+            return super().onecmd(line)
+        except Exception as exc:  # noqa: BLE001
+            self._error(f"Unexpected error while processing command: {exc}")
+            return False
+
     def get_completion_suggestions(self, line: str) -> list[str]:
         parsed = self._parse_completion_request(line)
         if parsed is None:
@@ -120,6 +127,10 @@ class BaseShell(cmd.Cmd):
         self._print_env_help()
         self.last_status = 0
 
+    def do_clear(self, _: str) -> None:
+        self.stdout.write("\033[2J\033[H")
+        self.last_status = 0
+
     def do_health(self, _: str) -> None:
         if self.client is None:
             self._error("Health checks are not available in this shell.")
@@ -139,6 +150,11 @@ class BaseShell(cmd.Cmd):
                     "Use DMS_CLI_CA_BUNDLE when the cluster uses a private CA certificate.",
                     "Use DMS_CLI_INSECURE=true only for local testing with self-signed certificates.",
                 ),
+            ),
+            "clear": CommandHelp(
+                summary="Clear the current terminal screen.",
+                usage=("clear",),
+                examples=("clear",),
             ),
             "exit": CommandHelp(summary="Exit the current shell.", usage=("exit", "quit")),
             "quit": CommandHelp(summary="Exit the current shell.", usage=("quit", "exit")),
@@ -293,7 +309,7 @@ class BaseShell(cmd.Cmd):
         ]
 
         widths = {
-            header: max(len(header), *(len(row[header]) for row in rows))
+            header: max((len(row[header]) for row in rows), default=len(header))
             for header in headers
         }
         separator = "+" + "+".join("-" * (widths[header] + 2) for header in headers) + "+"

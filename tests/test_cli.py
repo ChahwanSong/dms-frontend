@@ -168,6 +168,36 @@ def test_user_shell_list_brief_renders_task_table() -> None:
     assert '"service": "sync"' not in output
 
 
+def test_user_shell_list_brief_handles_empty_result_without_crash() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    client.user_tasks = []
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command("list brief")
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert "| task_id" in output
+
+
+def test_user_shell_handles_unexpected_exceptions_with_clean_error_message() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    client = FakeClient()
+
+    def _raise_unexpected(_: str) -> dict[str, Any]:
+        raise RuntimeError("backend exploded")
+
+    client.list_tasks_by_user = _raise_unexpected  # type: ignore[method-assign]
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout, stderr=stderr)
+
+    status = shell.execute_command("list")
+
+    assert status == 1
+    assert "Unexpected error while processing command: backend exploded" in stderr.getvalue()
+
+
 def test_user_shell_list_brief_completion_includes_brief_modifier() -> None:
     shell = UserShell(client=FakeClient(), settings=make_settings(), user_id="alice", stdout=io.StringIO())
 
@@ -238,6 +268,16 @@ def test_user_shell_help_env_mentions_frontend_env_and_tls() -> None:
     assert "DMS_FRONTEND_URL" in output
     assert "DMS_CLI_CA_BUNDLE" in output
     assert "DMS_CLI_INSECURE" in output
+
+
+def test_user_shell_clear_emits_terminal_clear_sequence() -> None:
+    stdout = io.StringIO()
+    shell = UserShell(client=FakeClient(), settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command("clear")
+
+    assert status == 0
+    assert stdout.getvalue() == "\033[2J\033[H"
 
 
 def test_user_shell_completion_suggests_dynamic_services_and_task_ids() -> None:
