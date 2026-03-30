@@ -114,28 +114,40 @@ class RedisTaskRepository(TaskRepository):
         return str(current_int + 1)
 
     async def save(self, task: TaskRecord) -> None:
-        await self._execute(
-            self._writer.set(
+        service_index = self._service_index(task.service)
+        service_users_index = self._service_users_index(task.service)
+        service_user_index = self._service_user_index(task.service, task.user_id)
+        user_index = self._user_index(task.user_id)
+        metadata_key = self._task_metadata_key(task.task_id)
+
+        async with self._writer.pipeline(transaction=True) as pipe:
+            pipe.set(
                 self._task_key(task.task_id),
                 task.model_dump_json(),
                 ex=self._ttl_seconds,
             )
-        )
-        await self._save_task_metadata(task)
-        await self._execute(self._writer.sadd("index:tasks", task.task_id))
-        await self._ensure_ttl("index:tasks")
-        service_index = self._service_index(task.service)
-        await self._execute(self._writer.sadd(service_index, task.task_id))
-        await self._ensure_ttl(service_index)
-        service_users_index = self._service_users_index(task.service)
-        await self._execute(self._writer.sadd(service_users_index, task.user_id))
-        await self._ensure_ttl(service_users_index)
-        service_user_index = self._service_user_index(task.service, task.user_id)
-        await self._execute(self._writer.sadd(service_user_index, task.task_id))
-        await self._ensure_ttl(service_user_index)
-        user_index = self._user_index(task.user_id)
-        await self._execute(self._writer.sadd(user_index, task.task_id))
-        await self._ensure_ttl(user_index)
+            pipe.hset(
+                metadata_key,
+                mapping={"service": task.service, "user_id": task.user_id},
+            )
+            pipe.expire(metadata_key, self._metadata_ttl_seconds)
+
+            pipe.sadd("index:tasks", task.task_id)
+            pipe.expire("index:tasks", self._ttl_seconds)
+
+            pipe.sadd(service_index, task.task_id)
+            pipe.expire(service_index, self._ttl_seconds)
+
+            pipe.sadd(service_users_index, task.user_id)
+            pipe.expire(service_users_index, self._ttl_seconds)
+
+            pipe.sadd(service_user_index, task.task_id)
+            pipe.expire(service_user_index, self._ttl_seconds)
+
+            pipe.sadd(user_index, task.task_id)
+            pipe.expire(user_index, self._ttl_seconds)
+
+            await pipe.execute()
 
     async def get(self, task_id: str) -> TaskRecord | None:
         raw = await self._execute(self._reader.get(self._task_key(task_id)))
@@ -145,11 +157,18 @@ class RedisTaskRepository(TaskRepository):
 
     async def delete(self, task_id: str) -> None:
         task = await self.get(task_id)
-        if not task:
+        if task:
+            await self._execute(self._writer.delete(self._task_key(task_id)))
+            await self._cleanup_indices(task_id, service=task.service, user_id=task.user_id)
+            await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
             return
-        await self._execute(self._writer.delete(self._task_key(task_id)))
-        await self._cleanup_indices(task_id, service=task.service, user_id=task.user_id)
-        await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
+
+        metadata = await self._execute(self._reader.hgetall(self._task_metadata_key(task_id)))
+        service = metadata.get("service") if metadata else None
+        user_id = metadata.get("user_id") if metadata else None
+        if service and user_id:
+            await self._cleanup_indices(task_id, service=service, user_id=user_id)
+            await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
 
     async def set_status(
         self, task_id: str, status: TaskStatus, *, log_entry: str | None = None
