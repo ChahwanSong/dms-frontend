@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import cmd
+import io
 import json
 import os
 import pwd
@@ -59,7 +60,28 @@ class BaseShell(cmd.Cmd):
 
     def execute_command(self, line: str) -> int:
         self.last_status = 0
-        self.onecmd(line)
+        pipeline = self._parse_grep_pipeline(line)
+        if pipeline is False:
+            return self.last_status
+        if pipeline is None:
+            self.onecmd(line)
+            return self.last_status
+
+        command, keyword = pipeline
+        buffered_stdout = io.StringIO()
+        original_stdout = self.stdout
+        self.stdout = buffered_stdout
+        try:
+            self.onecmd(command)
+        finally:
+            self.stdout = original_stdout
+
+        if self.last_status != 0:
+            return self.last_status
+
+        for raw_line in buffered_stdout.getvalue().splitlines():
+            if keyword in raw_line:
+                original_stdout.write(f"{raw_line}\n")
         return self.last_status
 
     def onecmd(self, line: str) -> bool | None:
@@ -236,6 +258,29 @@ class BaseShell(cmd.Cmd):
         except ValueError as exc:
             self._error(f"Unable to parse command arguments: {exc}")
             return None
+
+    def _parse_grep_pipeline(self, line: str) -> tuple[str, str] | None | bool:
+        tokens = self._split_tokens(line)
+        if tokens is None:
+            return False
+        if "|" not in tokens:
+            return None
+
+        pipe_index = tokens.index("|")
+        command_tokens = tokens[:pipe_index]
+        filter_tokens = tokens[pipe_index + 1 :]
+        if not command_tokens:
+            self._error("Command before pipe is required.")
+            return False
+        if len(filter_tokens) < 2 or filter_tokens[0] != "grep":
+            self._error("Only '| grep <keyword>' filtering is supported.")
+            return False
+
+        keyword = " ".join(filter_tokens[1:]).strip()
+        if not keyword:
+            self._error("grep keyword cannot be empty.")
+            return False
+        return shlex.join(command_tokens), keyword
 
     def _split_completion_words(self, line: str) -> list[str]:
         argline = line.partition(" ")[2]

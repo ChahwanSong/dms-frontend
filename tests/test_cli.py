@@ -185,6 +185,31 @@ def test_user_shell_list_brief_handles_empty_result_without_crash() -> None:
     assert "| task_id" in output
 
 
+def test_user_shell_supports_grep_pipeline_filtering() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command("list | grep sync")
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert '"service": "sync"' in output
+    assert '"service": "rm"' not in output
+
+
+def test_user_shell_rejects_unsupported_pipeline_command() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout, stderr=stderr)
+
+    status = shell.execute_command("list | head -n 1")
+
+    assert status == 1
+    assert "Only '| grep <keyword>' filtering is supported." in stderr.getvalue()
+
+
 def test_user_shell_handles_unexpected_exceptions_with_clean_error_message() -> None:
     stdout = io.StringIO()
     stderr = io.StringIO()
