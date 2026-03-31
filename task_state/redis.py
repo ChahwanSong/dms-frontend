@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 from redis.asyncio import Redis
@@ -26,6 +27,8 @@ class RedisRepositorySettings:
     ttl_seconds: int
     decode_responses: bool = True
     timezone_name: str = DEFAULT_TIMEZONE_NAME
+    keyevent_validation_required: bool = True
+    reconcile_interval_seconds: float = 300.0
 
     @classmethod
     def from_env(
@@ -67,6 +70,14 @@ class RedisRepositoryProvider:
         self._writer: Optional[Redis] = None
         self._repository: Optional[RedisTaskRepository] = None
         self._expiration_listener: Optional[TaskExpirationSubscriber] = None
+        self._keyevent_notifications_ok = False
+        self._keyevent_notifications_value: Optional[str] = None
+        self._reconciler_task: asyncio.Task[None] | None = None
+        self._reconciler_running = False
+        self._reconciler_last_run_at: Optional[str] = None
+        self._reconciler_last_error: Optional[str] = None
+        self._reconciler_total_runs = 0
+        self._reconciler_total_cleaned_members = 0
 
     @property
     def reader(self) -> Optional[Redis]:
@@ -90,6 +101,7 @@ class RedisRepositoryProvider:
             try:
                 await writer.ping()
                 await reader.ping()
+                await self._validate_keyevent_notifications(writer)
             except Exception:
                 await writer.aclose()
                 await reader.aclose()
@@ -116,8 +128,14 @@ class RedisRepositoryProvider:
                 reader=self._reader, repository=self._repository
             )
         await self._expiration_listener.start()
+        await self._start_reconciler_if_needed()
 
     async def stop_key_expiration_listener(self) -> None:
+        if self._reconciler_task:
+            self._reconciler_running = False
+            self._reconciler_task.cancel()
+            await asyncio.gather(self._reconciler_task, return_exceptions=True)
+            self._reconciler_task = None
         if self._expiration_listener:
             await self._expiration_listener.stop()
             self._expiration_listener = None
@@ -134,6 +152,103 @@ class RedisRepositoryProvider:
         self._writer = None
         self._repository = None
 
+    async def _validate_keyevent_notifications(self, redis_client: Redis) -> None:
+        config = await redis_client.config_get("notify-keyspace-events")
+        value = str(config.get("notify-keyspace-events", "") or "")
+        self._keyevent_notifications_value = value
+        has_required_flags = "E" in value and ("x" in value or "A" in value)
+        self._keyevent_notifications_ok = has_required_flags
+        if self._settings.keyevent_validation_required and not has_required_flags:
+            raise RuntimeError(
+                "Redis notify-keyspace-events must include 'E' and 'x' "
+                f"(or 'A'). Current value: {value!r}"
+            )
+
+    async def _start_reconciler_if_needed(self) -> None:
+        if self._repository is None or self._reader is None or self._writer is None:
+            return
+        if self._settings.reconcile_interval_seconds <= 0:
+            return
+        if self._reconciler_task is not None:
+            return
+        self._reconciler_running = True
+        self._reconciler_task = asyncio.create_task(self._reconcile_loop())
+
+    async def _reconcile_loop(self) -> None:
+        while self._reconciler_running:
+            try:
+                cleaned_members = await self._reconcile_indexes_once()
+                self._reconciler_total_cleaned_members += cleaned_members
+                self._reconciler_total_runs += 1
+                self._reconciler_last_error = None
+                self._reconciler_last_run_at = datetime.now(timezone.utc).isoformat()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self._reconciler_total_runs += 1
+                self._reconciler_last_run_at = datetime.now(timezone.utc).isoformat()
+                self._reconciler_last_error = str(exc)
+                logger.exception("Redis index reconciler failed")
+
+            await asyncio.sleep(self._settings.reconcile_interval_seconds)
+
+    async def _reconcile_indexes_once(self) -> int:
+        if self._reader is None or self._writer is None:
+            return 0
+        cleaned = 0
+        async for key in self._reader.scan_iter(match="index:*"):
+            index_key = key.decode() if isinstance(key, bytes) else str(key)
+            async for member in self._reader.sscan_iter(index_key):
+                task_id = member.decode() if isinstance(member, bytes) else str(member)
+                task_exists = await self._reader.exists(f"task:{task_id}")
+                if task_exists:
+                    continue
+                cleaned += await self._writer.srem(index_key, task_id)
+        return cleaned
+
+    def get_runtime_status(self) -> dict:
+        listener_stats = (
+            self._expiration_listener.snapshot()
+            if self._expiration_listener
+            else TaskExpirationSubscriberStats().to_dict()
+        )
+        return {
+            "keyevent_notifications_ok": self._keyevent_notifications_ok,
+            "keyevent_notifications_value": self._keyevent_notifications_value,
+            "expiration_listener_running": self._expiration_listener is not None,
+            "expiration_listener_stats": listener_stats,
+            "reconciler_running": self._reconciler_task is not None,
+            "reconciler_interval_seconds": self._settings.reconcile_interval_seconds,
+            "reconciler_total_runs": self._reconciler_total_runs,
+            "reconciler_total_cleaned_members": self._reconciler_total_cleaned_members,
+            "reconciler_last_run_at": self._reconciler_last_run_at,
+            "reconciler_last_error": self._reconciler_last_error,
+        }
+
+
+@dataclass(slots=True)
+class TaskExpirationSubscriberStats:
+    total_messages: int = 0
+    task_messages: int = 0
+    cleanup_successes: int = 0
+    metadata_missing: int = 0
+    cleanup_failures: int = 0
+    last_error: Optional[str] = None
+    last_message_at: Optional[str] = None
+    reconnect_count: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "total_messages": self.total_messages,
+            "task_messages": self.task_messages,
+            "cleanup_successes": self.cleanup_successes,
+            "metadata_missing": self.metadata_missing,
+            "cleanup_failures": self.cleanup_failures,
+            "last_error": self.last_error,
+            "last_message_at": self.last_message_at,
+            "reconnect_count": self.reconnect_count,
+        }
+
 
 class TaskExpirationSubscriber:
     """Background task that reacts to Redis key expiration events."""
@@ -145,6 +260,7 @@ class TaskExpirationSubscriber:
         self._stopped = asyncio.Event()
         self._pubsub = None
         self._db_index = self._reader.connection_pool.connection_kwargs.get("db", 0)
+        self._stats = TaskExpirationSubscriberStats()
 
     async def start(self) -> None:
         if self._task is not None:
@@ -194,16 +310,20 @@ class TaskExpirationSubscriber:
                     "Will retry in 5 seconds.",
                     exc,
                 )
+                self._stats.reconnect_count += 1
                 await asyncio.sleep(5)
 
             except Exception:
                 logger.exception("Failed to process Redis expiration notifications")
+                self._stats.last_error = "Failed to process Redis expiration notifications"
                 # 너무 시끄럽다면 여기서도 retry 하고 싶을 수 있음
                 await asyncio.sleep(5)
 
         logger.info("TaskExpirationSubscriber stopped")
 
     async def _handle_message(self, message: dict) -> None:
+        self._stats.total_messages += 1
+        self._stats.last_message_at = datetime.now(timezone.utc).isoformat()
         key = message.get("data")
         if isinstance(key, bytes):
             key = key.decode()
@@ -211,5 +331,18 @@ class TaskExpirationSubscriber:
             return
         if not key.startswith("task:"):
             return
+        self._stats.task_messages += 1
         task_id = key.removeprefix("task:")
-        await self._repository.handle_task_expired(task_id)
+        try:
+            cleaned = await self._repository.handle_task_expired(task_id)
+        except Exception as exc:
+            self._stats.cleanup_failures += 1
+            self._stats.last_error = str(exc)
+            raise
+        if cleaned:
+            self._stats.cleanup_successes += 1
+        else:
+            self._stats.metadata_missing += 1
+
+    def snapshot(self) -> dict:
+        return self._stats.to_dict()

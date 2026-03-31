@@ -97,6 +97,8 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_REDIS_WRITE_URL` | `redis://haproxy-redis.dms-redis.svc.cluster.local:6379/0` | Redis writer endpoint |
 | `DMS_REDIS_READ_URL` | `redis://haproxy-redis.dms-redis.svc.cluster.local:6380/0` | Redis reader endpoint |
 | `DMS_REDIS_TASK_TTL_SECONDS` | `7776000` | Expiry (in seconds) applied to task metadata and indexes |
+| `DMS_REDIS_REQUIRE_KEYEVENT_NOTIFICATIONS` | `true` | Fail startup unless Redis `notify-keyspace-events` includes `E` + `x` (or `A`) |
+| `DMS_REDIS_RECONCILE_INTERVAL_SECONDS` | `300.0` | Background reconciliation interval for pruning stale index members (`<=0` disables) |
 | `DMS_SCHEDULER_BASE_URL` | `http://dms-scheduler` | Base URL for the downstream scheduler |
 | `DMS_SCHEDULER_TASK_ENDPOINT` | `/tasks/task` | Relative submission path |
 | `DMS_SCHEDULER_CANCEL_ENDPOINT` | `/tasks/cancel` | Relative cancellation path |
@@ -106,6 +108,31 @@ All configuration comes from environment variables with the `DMS_` prefix, provi
 | `DMS_LOG_LEVEL` | `INFO` | Application log level |
 | `DMS_LOG_JSON` | `false` | Emit JSON logs (set `true` for Kubernetes-friendly structured logs) |
 | `DMS_TIMEZONE` | `Asia/Seoul` | Timezone used for task timestamps and log entries |
+
+### Redis key-expiration requirements and cleanup semantics
+
+The service uses Redis key-expiration events to clean up task indexes when `task:{id}` expires. Redis must publish
+expired key events on the selected DB channel (`__keyevent@<db>__:expired`), which requires:
+
+- `notify-keyspace-events` to include `E` and `x`, or `A` (`A` implies `x` event class).
+- Read/write connectivity for the configured Redis endpoints.
+
+On startup, the frontend validates `notify-keyspace-events` and fails fast if `DMS_REDIS_REQUIRE_KEYEVENT_NOTIFICATIONS=true`
+and the setting is missing required flags.
+
+Metadata TTL behavior:
+
+- `task:{id}` TTL = `DMS_REDIS_TASK_TTL_SECONDS`
+- `task:{id}:metadata` TTL = `DMS_REDIS_TASK_TTL_SECONDS + 60 seconds`
+
+The metadata grace window allows the expiration listener to resolve `service/user` information shortly after task-key expiry
+and remove orphaned index entries deterministically. A periodic reconciliation loop (`DMS_REDIS_RECONCILE_INTERVAL_SECONDS`)
+also scans `index:*` sets and removes members whose `task:{id}` key no longer exists, providing eventual consistency even if
+expiration events are delayed.
+
+Runtime Redis operational metrics (keyevent/listener/reconciler details) are exposed through
+`GET /api/v1/admin/metrics` and require a valid `X-Operator-Token`. Public `GET /healthz` remains lightweight and
+reports connectivity status only.
 
 ## Running the service
 
@@ -129,7 +156,7 @@ All paths are rooted at `/api/v1` by default.
 | Method | Path | Description | Auth |
 | --- | --- | --- | --- |
 | GET | `/help` | API overview and endpoint listing | None |
-| GET | `/healthz` | Health probe (includes Redis connectivity) | None |
+| GET | `/healthz` | Public health probe (Redis connectivity only) | None |
 | GET | `/services/{service}/users/{user_id}/tasks` | List a user's tasks for a service | None |
 | POST | `/services/{service}/users/{user_id}/tasks` | Submit a new task; query parameters become task inputs | None |
 | POST | `/services/{service}/users/{user_id}/tasks/cancel` | Cancel all tasks for a specific service+user scope | None |
@@ -146,6 +173,7 @@ All paths are rooted at `/api/v1` by default.
 | DELETE | `/admin/tasks/{task_id}` | Cleanup task metadata/logs (cancel is requested asynchronously first; metadata is then deleted immediately) | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/users` | List users who submitted tasks for a service | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks` | List tasks for a specific service | `X-Operator-Token` header |
+| GET | `/admin/metrics` | Runtime Redis metrics (keyevent validation, listener/reconciler stats) | `X-Operator-Token` header |
 | POST | `/admin/services/{service}/tasks/cancel` | Cancel all tasks owned by a service | `X-Operator-Token` header |
 | DELETE | `/admin/services/{service}/tasks` | Cleanup (delete) all tasks owned by a service | `X-Operator-Token` header |
 | GET | `/admin/services/{service}/tasks/summary` | Compact summary of pending/success/failed task IDs for a service | `X-Operator-Token` header |

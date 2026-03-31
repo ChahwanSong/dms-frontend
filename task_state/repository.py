@@ -253,7 +253,7 @@ class RedisTaskRepository(TaskRepository):
         raw_users = await self._execute(self._reader.smembers(self._service_users_index(service)))
         return [user.decode() if isinstance(user, bytes) else str(user) for user in raw_users]
 
-    async def handle_task_expired(self, task_id: str) -> None:
+    async def handle_task_expired(self, task_id: str) -> bool:
         """Remove index entries for an expired task if metadata is available."""
 
         metadata = await self._execute(self._reader.hgetall(self._task_metadata_key(task_id)))
@@ -261,10 +261,11 @@ class RedisTaskRepository(TaskRepository):
         user_id = metadata.get("user_id") if metadata else None
 
         if not service or not user_id:
-            return
+            return False
 
         await self._cleanup_indices(task_id, service=service, user_id=user_id)
         await self._execute(self._writer.delete(self._task_metadata_key(task_id)))
+        return True
 
     @staticmethod
     def _task_key(task_id: str) -> str:

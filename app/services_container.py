@@ -39,6 +39,8 @@ async def init_services(
                 read_url=_settings.redis_read_url,
                 ttl_seconds=_settings.redis_task_ttl_seconds,
                 timezone_name=_settings.timezone,
+                keyevent_validation_required=_settings.redis_require_keyevent_notifications,
+                reconcile_interval_seconds=_settings.redis_reconcile_interval_seconds,
             )
         )
         try:

@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.services.models import (
     OperatorAuthResponse,
+    RedisHealth,
+    RedisMetricsResponse,
     ServiceTaskStatusSummary,
     ServiceTaskSummaryResponse,
     TaskBulkActionResponse,
@@ -13,6 +15,7 @@ from app.services.models import (
     TaskUserListResponse,
 )
 from app.services.tasks import TaskService
+from app import services_container
 from task_state import TaskStatus
 
 from ..dependencies import get_task_service
@@ -36,6 +39,23 @@ async def list_all_tasks(
 ) -> TaskListResponse:
     tasks = await task_service.list_all_tasks()
     return TaskListResponse(tasks=tasks)
+
+
+@router.get("/metrics", response_model=RedisMetricsResponse, response_model_exclude_none=True)
+async def get_runtime_metrics() -> RedisMetricsResponse:
+    provider = services_container.get_redis_provider_instance()
+    if provider is None:
+        return RedisMetricsResponse(redis=RedisHealth(connected=False, message="Redis provider unavailable"))
+    try:
+        await provider.get_repository()
+        if provider.writer:
+            await provider.writer.ping()
+        if provider.reader and provider.reader is not provider.writer:
+            await provider.reader.ping()
+        runtime_status = provider.get_runtime_status()
+    except Exception as exc:  # pragma: no cover - defensive reporting for operators
+        return RedisMetricsResponse(redis=RedisHealth(connected=False, message=str(exc)))
+    return RedisMetricsResponse(redis=RedisHealth(connected=True, **runtime_status))
 
 
 @router.get("/tasks/next-id", response_model=TaskIdCursorResponse)

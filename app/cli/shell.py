@@ -782,6 +782,12 @@ class AdminShell(BaseShell):
                 api_routes=("GET /api/v1/admin/services/{service}/tasks/summary",),
                 examples=("summary service sync",),
             ),
+            "metrics": CommandHelp(
+                summary="Show admin runtime metrics for Redis listener/reconciler.",
+                usage=("metrics",),
+                api_routes=("GET /api/v1/admin/metrics",),
+                examples=("metrics",),
+            ),
             "cancel": CommandHelp(
                 summary="Cancel one task or all tasks owned by a service.",
                 usage=("cancel task <task_id|task_id_selector>", "cancel service <service>"),
@@ -867,6 +873,15 @@ class AdminShell(BaseShell):
         if words[0] == "service" and len(words) == 2:
             return self._match(list(KNOWN_SERVICES), text)
         return []
+
+    def do_metrics(self, arg: str) -> None:
+        tokens = self._split_tokens(arg)
+        if tokens is None:
+            return
+        if tokens:
+            self._error("Usage: metrics")
+            return
+        self._emit_api_result(lambda: self.client.admin_metrics())
 
     def do_cancel(self, arg: str) -> None:
         tokens = self._split_tokens(arg)
