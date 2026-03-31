@@ -804,8 +804,10 @@ class AdminShell(BaseShell):
                 summary="List global tasks, service tasks/users, or the next task ID cursor.",
                 usage=(
                     "list tasks",
+                    "list tasks brief",
                     "list next-id",
                     "list service <service> tasks",
+                    "list service <service> tasks brief",
                     "list service <service> users",
                 ),
                 api_routes=(
@@ -816,10 +818,13 @@ class AdminShell(BaseShell):
                 ),
                 examples=(
                     "list tasks",
+                    "list tasks brief",
                     "list next-id",
                     "list service sync tasks",
+                    "list service sync tasks brief",
                     "list service sync users",
                 ),
+                notes=("Add 'brief' to render task rows as a compact table instead of raw JSON.",),
             ),
             "summary": CommandHelp(
                 summary="Summarize pending/success/failed task IDs for one service.",
@@ -873,32 +878,66 @@ class AdminShell(BaseShell):
         tokens = self._split_tokens(arg)
         if tokens is None:
             return
-        if tokens == ["tasks"]:
-            self._emit_api_result(lambda: self.client.list_all_tasks())
+        brief = "brief" in tokens
+        filtered_tokens = [token for token in tokens if token != "brief"]
+
+        if filtered_tokens == ["tasks"]:
+            self._emit_admin_task_list_result(lambda: self.client.list_all_tasks(), brief)
             return
-        if tokens == ["next-id"]:
+        if filtered_tokens == ["next-id"]:
+            if brief:
+                self._error("brief is only supported for task list outputs.")
+                return
             self._emit_api_result(lambda: self.client.get_next_task_id())
             return
-        if len(tokens) == 3 and tokens[0] == "service":
-            service, target = tokens[1], tokens[2]
+        if len(filtered_tokens) == 3 and filtered_tokens[0] == "service":
+            service, target = filtered_tokens[1], filtered_tokens[2]
             if target == "tasks":
-                self._emit_api_result(lambda: self.client.list_service_tasks(service))
+                self._emit_admin_task_list_result(lambda: self.client.list_service_tasks(service), brief)
                 return
             if target == "users":
+                if brief:
+                    self._error("brief is only supported for task list outputs.")
+                    return
                 self._emit_api_result(lambda: self.client.list_service_users(service))
                 return
-        self._error("Usage: list tasks | list next-id | list service <service> tasks | list service <service> users")
+        self._error(
+            "Usage: list tasks [brief] | list next-id | list service <service> tasks [brief] | list service <service> users"
+        )
+
+    def _emit_admin_task_list_result(self, request: Any, brief: bool) -> None:
+        try:
+            payload = request()
+        except DmsApiError as exc:
+            self._error(str(exc))
+            return
+
+        if brief:
+            tasks = payload.get("tasks", [])
+            if not isinstance(tasks, list):
+                self._error("Response payload is missing a valid 'tasks' list.")
+                return
+            self._write_task_table(tasks)
+            self.last_status = 0
+            return
+
+        self._write_json(payload)
+        self.last_status = 0
 
     def complete_list(self, text: str, line: str, begidx: int, endidx: int) -> list[str]:
         del begidx, endidx
         words = self._split_completion_words(line)
         if len(words) <= 1:
             return self._match(["tasks", "next-id", "service"], text)
+        if words[0] == "tasks" and len(words) == 2:
+            return self._match(["brief"], text)
         if words[0] == "service":
             if len(words) == 2:
                 return self._match(list(KNOWN_SERVICES), text)
             if len(words) == 3:
                 return self._match(["tasks", "users"], text)
+            if len(words) == 4 and words[2] == "tasks":
+                return self._match(["brief"], text)
         return []
 
     def do_summary(self, arg: str) -> None:

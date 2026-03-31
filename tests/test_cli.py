@@ -286,6 +286,42 @@ def test_admin_shell_cancel_supports_task_id_selector_batch() -> None:
     assert '"requested_task_ids": [' in stdout.getvalue()
 
 
+def test_admin_shell_list_tasks_brief_renders_task_table() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = AdminShell(client=client, settings=make_settings(), stdout=stdout)
+
+    status = shell.execute_command("list tasks brief")
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert "| task_id" in output
+    assert "| 10" in output
+    assert '"service": "sync"' not in output
+
+
+def test_admin_shell_list_service_users_brief_is_rejected() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    client = FakeClient()
+    shell = AdminShell(client=client, settings=make_settings(), stdout=stdout, stderr=stderr)
+
+    status = shell.execute_command("list service sync users brief")
+
+    assert status == 1
+    assert "brief is only supported for task list outputs." in stderr.getvalue()
+
+
+def test_admin_shell_list_completion_includes_brief_for_task_lists() -> None:
+    shell = AdminShell(client=FakeClient(), settings=make_settings(), stdout=io.StringIO())
+
+    tasks_modifier_suggestions = shell.get_completion_suggestions("list tasks ")
+    service_tasks_modifier_suggestions = shell.get_completion_suggestions("list service sync tasks ")
+
+    assert "brief" in tasks_modifier_suggestions
+    assert "brief" in service_tasks_modifier_suggestions
+
+
 def test_user_shell_help_env_mentions_frontend_env_and_tls() -> None:
     stdout = io.StringIO()
     shell = UserShell(client=FakeClient(), settings=make_settings(), user_id="alice", stdout=stdout)
