@@ -67,7 +67,7 @@ class BaseShell(cmd.Cmd):
             self.onecmd(line)
             return self.last_status
 
-        command, keyword = pipeline
+        command, keywords = pipeline
         buffered_stdout = io.StringIO()
         original_stdout = self.stdout
         self.stdout = buffered_stdout
@@ -80,7 +80,7 @@ class BaseShell(cmd.Cmd):
             return self.last_status
 
         for raw_line in buffered_stdout.getvalue().splitlines():
-            if keyword in raw_line:
+            if all(keyword in raw_line for keyword in keywords):
                 original_stdout.write(f"{raw_line}\n")
         return self.last_status
 
@@ -259,28 +259,46 @@ class BaseShell(cmd.Cmd):
             self._error(f"Unable to parse command arguments: {exc}")
             return None
 
-    def _parse_grep_pipeline(self, line: str) -> tuple[str, str] | None | bool:
+    def _parse_grep_pipeline(self, line: str) -> tuple[str, list[str]] | None | bool:
         tokens = self._split_tokens(line)
         if tokens is None:
             return False
         if "|" not in tokens:
             return None
 
-        pipe_index = tokens.index("|")
-        command_tokens = tokens[:pipe_index]
-        filter_tokens = tokens[pipe_index + 1 :]
+        segments: list[list[str]] = []
+        current_segment: list[str] = []
+        for token in tokens:
+            if token == "|":
+                if not current_segment:
+                    self._error("Command before pipe is required.")
+                    return False
+                segments.append(current_segment)
+                current_segment = []
+                continue
+            current_segment.append(token)
+        if not current_segment:
+            self._error("Command before pipe is required.")
+            return False
+        segments.append(current_segment)
+
+        command_tokens = segments[0]
         if not command_tokens:
             self._error("Command before pipe is required.")
             return False
-        if len(filter_tokens) < 2 or filter_tokens[0] != "grep":
-            self._error("Only '| grep <keyword>' filtering is supported.")
-            return False
 
-        keyword = " ".join(filter_tokens[1:]).strip()
-        if not keyword:
-            self._error("grep keyword cannot be empty.")
-            return False
-        return shlex.join(command_tokens), keyword
+        keywords: list[str] = []
+        for filter_tokens in segments[1:]:
+            if len(filter_tokens) < 2 or filter_tokens[0] != "grep":
+                self._error("Only '| grep <keyword>' filtering is supported.")
+                return False
+            keyword = " ".join(filter_tokens[1:]).strip()
+            if not keyword:
+                self._error("grep keyword cannot be empty.")
+                return False
+            keywords.append(keyword)
+
+        return shlex.join(command_tokens), keywords
 
     def _split_completion_words(self, line: str) -> list[str]:
         argline = line.partition(" ")[2]

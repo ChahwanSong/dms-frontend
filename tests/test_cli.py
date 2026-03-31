@@ -198,6 +198,22 @@ def test_user_shell_supports_grep_pipeline_filtering() -> None:
     assert '"service": "rm"' not in output
 
 
+def test_user_shell_supports_recursive_grep_pipeline_filtering() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout)
+
+    status = shell.execute_command('list brief | grep "sync" | grep "running"')
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert "| 10" in output
+    assert "| sync" in output
+    assert "| running" in output
+    assert "| 11" not in output
+    assert "| rm" not in output
+
+
 def test_user_shell_rejects_unsupported_pipeline_command() -> None:
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -208,6 +224,18 @@ def test_user_shell_rejects_unsupported_pipeline_command() -> None:
 
     assert status == 1
     assert "Only '| grep <keyword>' filtering is supported." in stderr.getvalue()
+
+
+def test_user_shell_rejects_malformed_recursive_pipeline() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    client = FakeClient()
+    shell = UserShell(client=client, settings=make_settings(), user_id="alice", stdout=stdout, stderr=stderr)
+
+    status = shell.execute_command("list | grep sync |")
+
+    assert status == 1
+    assert "Command before pipe is required." in stderr.getvalue()
 
 
 def test_user_shell_handles_unexpected_exceptions_with_clean_error_message() -> None:
