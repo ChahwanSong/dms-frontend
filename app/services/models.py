@@ -63,3 +63,17 @@ class HealthResponse(BaseModel):
 class RedisHealth(BaseModel):
     connected: bool
     message: Optional[str] = None
+    keyevent_notifications_ok: Optional[bool] = None
+    keyevent_notifications_value: Optional[str] = None
+    expiration_listener_running: Optional[bool] = None
+    expiration_listener_stats: Optional[dict] = None
+    reconciler_running: Optional[bool] = None
+    reconciler_interval_seconds: Optional[float] = None
+    reconciler_total_runs: Optional[int] = None
+    reconciler_total_cleaned_members: Optional[int] = None
+    reconciler_last_run_at: Optional[str] = None
+    reconciler_last_error: Optional[str] = None
+
+
+class RedisMetricsResponse(BaseModel):
+    redis: RedisHealth

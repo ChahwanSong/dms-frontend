@@ -99,6 +99,9 @@ class DmsApiClient:
     def summarize_service_tasks(self, service: str) -> dict[str, Any]:
         return self._request("GET", f"/admin/services/{service}/tasks/summary", operator=True)
 
+    def admin_metrics(self) -> dict[str, Any]:
+        return self._request("GET", "/admin/metrics", operator=True)
+
     def _request(
         self,
         method: str,

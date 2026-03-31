@@ -125,6 +125,10 @@ class FakeClient:
         self.calls.append(("cleanup_service_tasks", service))
         return {"matched_count": 1, "affected_count": 1, "task_ids": ["10"]}
 
+    def admin_metrics(self) -> dict[str, Any]:
+        self.calls.append(("admin_metrics",))
+        return {"redis": {"connected": True, "reconciler_running": True}}
+
 
 def make_settings() -> CLISettings:
     return CLISettings(
@@ -301,6 +305,18 @@ def test_admin_shell_maps_service_summary_command() -> None:
     assert status == 0
     assert client.calls[0] == ("summarize_service_tasks", "sync")
     assert '"pending_task_ids": [' in stdout.getvalue()
+
+
+def test_admin_shell_metrics_command_calls_admin_metrics() -> None:
+    stdout = io.StringIO()
+    client = FakeClient()
+    shell = AdminShell(client=client, settings=make_settings(), stdout=stdout)
+
+    status = shell.execute_command("metrics")
+
+    assert status == 0
+    assert client.calls[0] == ("admin_metrics",)
+    assert '"reconciler_running": true' in stdout.getvalue().lower()
 
 
 def test_kube_shell_hello_placeholder() -> None:

@@ -164,6 +164,29 @@ class _FakeRedisProvider:
     async def close(self) -> None:
         self.closed = True
 
+    def get_runtime_status(self) -> dict:
+        return {
+            "keyevent_notifications_ok": True,
+            "keyevent_notifications_value": "Ex",
+            "expiration_listener_running": True,
+            "expiration_listener_stats": {
+                "total_messages": 0,
+                "task_messages": 0,
+                "cleanup_successes": 0,
+                "metadata_missing": 0,
+                "cleanup_failures": 0,
+                "last_error": None,
+                "last_message_at": None,
+                "reconnect_count": 0,
+            },
+            "reconciler_running": True,
+            "reconciler_interval_seconds": 300.0,
+            "reconciler_total_runs": 0,
+            "reconciler_total_cleaned_members": 0,
+            "reconciler_last_run_at": None,
+            "reconciler_last_error": None,
+        }
+
 
 @pytest.fixture
 async def test_app(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
@@ -229,6 +252,19 @@ async def test_healthcheck_reports_redis_failure(monkeypatch: pytest.MonkeyPatch
     assert response.status_code == 503
     assert response.json()["status"] == "error"
     assert response.json()["redis"] == {"connected": False, "message": "redis unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_admin_metrics_requires_operator_token(test_app: AsyncClient) -> None:
+    unauthorized = await test_app.get("/api/v1/admin/metrics")
+    assert unauthorized.status_code == 401
+
+    authorized = await test_app.get("/api/v1/admin/metrics", headers=AUTH_HEADERS)
+    assert authorized.status_code == 200
+    payload = authorized.json()["redis"]
+    assert payload["connected"] is True
+    assert payload["reconciler_running"] is True
+    assert payload["keyevent_notifications_ok"] is True
 
 
 @pytest.mark.asyncio

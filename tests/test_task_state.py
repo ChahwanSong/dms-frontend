@@ -19,6 +19,7 @@ async def test_provider_creates_and_reuses_repository(monkeypatch: pytest.Monkey
     reader_mock = Mock()
     writer_mock.ping = AsyncMock(return_value=True)
     reader_mock.ping = AsyncMock(return_value=True)
+    writer_mock.config_get = AsyncMock(return_value={"notify-keyspace-events": "Ex"})
     writer_mock.aclose = AsyncMock(return_value=None)
     reader_mock.aclose = AsyncMock(return_value=None)
 
@@ -73,7 +74,7 @@ class _StubPubSub:
 @pytest.mark.asyncio
 async def test_task_expiration_subscriber_handles_task_notification(monkeypatch: pytest.MonkeyPatch) -> None:
     repository = Mock()
-    repository.handle_task_expired = AsyncMock(return_value=None)
+    repository.handle_task_expired = AsyncMock(return_value=True)
 
     pubsub = _StubPubSub(messages=[{"data": "task:77"}, {"data": "other"}])
 
@@ -89,6 +90,10 @@ async def test_task_expiration_subscriber_handles_task_notification(monkeypatch:
 
     repository.handle_task_expired.assert_awaited_with("77")
     assert "__keyevent@2__:expired" in pubsub.subscribed
+    snapshot = subscriber.snapshot()
+    assert snapshot["total_messages"] >= 1
+    assert snapshot["task_messages"] == 1
+    assert snapshot["cleanup_successes"] == 1
 
 
 @pytest.mark.asyncio
@@ -112,6 +117,37 @@ async def test_provider_closes_clients_on_failure(monkeypatch: pytest.MonkeyPatc
     )
 
     with pytest.raises(RuntimeError):
+        await provider.get_repository()
+
+    writer_mock.aclose.assert_awaited()
+    reader_mock.aclose.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_provider_requires_keyevent_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer_mock = Mock()
+    reader_mock = Mock()
+    writer_mock.ping = AsyncMock(return_value=True)
+    reader_mock.ping = AsyncMock(return_value=True)
+    writer_mock.config_get = AsyncMock(return_value={"notify-keyspace-events": ""})
+    writer_mock.aclose = AsyncMock(return_value=None)
+    reader_mock.aclose = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(
+        "task_state.redis.Redis.from_url",
+        Mock(side_effect=[writer_mock, reader_mock]),
+    )
+
+    provider = RedisRepositoryProvider(
+        RedisRepositorySettings(
+            write_url="redis://write",
+            read_url="redis://read",
+            ttl_seconds=60,
+            keyevent_validation_required=True,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="notify-keyspace-events"):
         await provider.get_repository()
 
     writer_mock.aclose.assert_awaited()
